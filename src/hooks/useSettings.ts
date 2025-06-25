@@ -48,9 +48,9 @@ export function useSettings() {
         .from('user_settings')
         .select('*')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') {
+      if (error) {
         throw error;
       }
 
@@ -89,7 +89,12 @@ export function useSettings() {
       setSaving(true);
       const { error } = await supabase
         .from('user_settings')
-        .insert([{ user_id: user.id, ...defaultSettings }]);
+        .upsert([{ 
+          user_id: user.id, 
+          ...defaultSettings 
+        }], {
+          onConflict: 'user_id'
+        });
 
       if (error) throw error;
       
