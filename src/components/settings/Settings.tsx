@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useSettings } from '../../hooks/useSettings';
+import { supabase } from '../../lib/supabase';
 import toast from 'react-hot-toast';
 
 export function Settings() {
@@ -24,11 +25,80 @@ export function Settings() {
     phone: '',
     timezone: 'UTC',
   });
+  const [profileLoading, setProfileLoading] = React.useState(false);
+
+  // Load profile data on component mount
+  React.useEffect(() => {
+    const loadProfile = async () => {
+      if (!user) return;
+
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('full_name, timezone')
+          .eq('id', user.id)
+          .single();
+
+        if (error && error.code !== 'PGRST116') {
+          throw error;
+        }
+
+        if (data) {
+          setProfile({
+            fullName: data.full_name || '',
+            phone: '', // Phone not in profiles table yet
+            timezone: data.timezone || 'UTC',
+          });
+        }
+      } catch (error) {
+        console.error('Error loading profile:', error);
+      }
+    };
+
+    loadProfile();
+  }, [user]);
+
+  const handleSaveProfile = async () => {
+    if (!user) {
+      toast.error('Please sign in to save profile');
+      return;
+    }
+
+    try {
+      setProfileLoading(true);
+
+      // Update or insert profile
+      const { error } = await supabase
+        .from('profiles')
+        .upsert([{
+          id: user.id,
+          email: user.email!,
+          full_name: profile.fullName.trim() || null,
+          timezone: profile.timezone,
+          updated_at: new Date().toISOString()
+        }], {
+          onConflict: 'id'
+        });
+
+      if (error) throw error;
+
+      toast.success('Profile saved successfully!');
+    } catch (error) {
+      console.error('Error saving profile:', error);
+      toast.error('Failed to save profile');
+    } finally {
+      setProfileLoading(false);
+    }
+  };
 
   const handleSave = async () => {
     try {
-      // Settings are automatically saved via useSettings hook
-      toast.success('Settings saved successfully!');
+      if (activeTab === 'profile') {
+        await handleSaveProfile();
+      } else {
+        // Settings are automatically saved via useSettings hook
+        toast.success('Settings saved successfully!');
+      }
     } catch (error) {
       toast.error('Failed to save settings');
     }
@@ -52,7 +122,7 @@ export function Settings() {
                 Email Address
               </label>
               <div className="flex items-center space-x-3">
-                <Mail className="h-5 w-5 text-gray-400" />
+                <Mail className="h-5 w-5 text-gray-400 dark:text-gray-500" />
                 <input
                   type="email"
                   value={user?.email || ''}
@@ -80,7 +150,7 @@ export function Settings() {
                 Phone Number
               </label>
               <div className="flex items-center space-x-3">
-                <Phone className="h-5 w-5 text-gray-400" />
+                <Phone className="h-5 w-5 text-gray-400 dark:text-gray-500" />
                 <input
                   type="tel"
                   value={profile.phone}
@@ -96,7 +166,7 @@ export function Settings() {
                 Timezone
               </label>
               <div className="flex items-center space-x-3">
-                <Globe className="h-5 w-5 text-gray-400" />
+                <Globe className="h-5 w-5 text-gray-400 dark:text-gray-500" />
                 <select
                   value={profile.timezone}
                   onChange={(e) => setProfile({ ...profile, timezone: e.target.value })}
@@ -422,10 +492,11 @@ export function Settings() {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={handleSave}
-                    className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg transition-all duration-200 flex items-center space-x-2"
+                    disabled={profileLoading}
+                    className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-3 rounded-xl font-semibold hover:shadow-lg transition-all duration-200 flex items-center space-x-2 disabled:opacity-50"
                   >
                     <Save className="h-4 w-4" />
-                    <span>Save Changes</span>
+                    <span>{profileLoading ? 'Saving...' : 'Save Changes'}</span>
                   </motion.button>
                 </div>
               )}

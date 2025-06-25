@@ -56,6 +56,69 @@ const getGeminiResponse = async (input: string, personality: string, conversatio
   }
 };
 
+const generateAIReport = async (messages: any[]): Promise<any> => {
+  try {
+    const userMessages = messages.filter(m => m.message_type === 'user').map(m => m.content).join(' ');
+    
+    const reportPrompt = `Analyze the following conversation and provide a detailed psychological and emotional report in JSON format:
+
+Conversation: "${userMessages}"
+
+Please provide a JSON response with the following structure:
+{
+  "overall_mood": "positive/negative/neutral",
+  "emotions": ["array", "of", "detected", "emotions"],
+  "stress_level": "low/medium/high",
+  "recommendations": ["array", "of", "helpful", "suggestions"],
+  "summary": "detailed summary of the user's emotional state and mental health",
+  "key_concerns": ["array", "of", "main", "concerns"],
+  "positive_indicators": ["array", "of", "positive", "signs"],
+  "confidence_score": 0.85
+}
+
+Base your analysis on psychological principles and provide actionable insights.`;
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: reportPrompt }] }]
+        })
+      }
+    );
+    
+    if (!response.ok) {
+      throw new Error('Failed to generate AI report');
+    }
+    
+    const data = await response.json();
+    const reportText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    
+    // Extract JSON from the response
+    const jsonMatch = reportText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
+    }
+    
+    // Fallback if JSON parsing fails
+    return {
+      overall_mood: 'neutral',
+      emotions: ['mixed'],
+      stress_level: 'medium',
+      recommendations: ['Continue regular check-ins with mental health'],
+      summary: 'Unable to generate detailed analysis. Please try again.',
+      key_concerns: [],
+      positive_indicators: [],
+      confidence_score: 0.5
+    };
+  } catch (error) {
+    console.error('Error generating AI report:', error);
+    throw error;
+  }
+};
+
 export function VoiceAI() {
   const { user } = useAuth();
   const { settings } = useSettings();
@@ -69,7 +132,6 @@ export function VoiceAI() {
     addMessage,
     deleteSession,
     updateSessionTitle,
-    generateMoodReport,
     shareChatSession,
   } = useChatSessions();
 
@@ -205,17 +267,57 @@ export function VoiceAI() {
   };
 
   const handleGenerateReport = async () => {
-    if (!currentSession) return;
+    if (!currentSession || messages.length === 0) {
+      toast.error('No conversation to analyze');
+      return;
+    }
     
-    const report = await generateMoodReport(currentSession.id);
-    if (report) {
+    try {
+      setIsProcessing(true);
+      const report = await generateAIReport(messages);
       setMoodReport(report);
+      toast.success('AI report generated successfully!');
+    } catch (error) {
+      console.error('Error generating report:', error);
+      toast.error('Failed to generate report');
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   const handleTitleUpdate = async (sessionId: string, newTitle: string) => {
     await updateSessionTitle(sessionId, newTitle);
     setEditingTitle(null);
+  };
+
+  const handleShareChat = async (sessionId: string) => {
+    try {
+      const session = sessions.find(s => s.id === sessionId);
+      if (!session) return;
+
+      // Get messages for this session
+      const sessionMessages = messages.filter(m => m.session_id === sessionId);
+      
+      // Format as readable text
+      const chatText = sessionMessages
+        .map(m => `${m.message_type === 'user' ? 'You' : 'AI'}: ${m.content}`)
+        .join('\n\n');
+      
+      const shareText = `MindPal Chat: ${session.title}\n\n${chatText}`;
+
+      if (navigator.share) {
+        await navigator.share({
+          title: `MindPal Chat: ${session.title}`,
+          text: shareText,
+        });
+      } else {
+        await navigator.clipboard.writeText(shareText);
+        toast.success('Chat copied to clipboard!');
+      }
+    } catch (error) {
+      console.error('Error sharing session:', error);
+      toast.error('Failed to share session');
+    }
   };
 
   return (
@@ -307,7 +409,7 @@ export function VoiceAI() {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        shareChatSession(session.id);
+                        handleShareChat(session.id);
                       }}
                       className="text-gray-400 hover:text-green-500 transition-colors duration-200"
                       title="Share chat"
@@ -343,93 +445,96 @@ export function VoiceAI() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-2xl p-6 border border-purple-100 dark:border-purple-800"
+        className="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-2xl border border-purple-100 dark:border-purple-800"
       >
-        {/* Input Area */}
-        <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4 mb-6">
-          <form onSubmit={handleTextSubmit} className="flex items-center space-x-2 flex-1 max-w-2xl">
-            <input
-              type="text"
-              value={textInput}
-              onChange={(e) => setTextInput(e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-purple-200 dark:border-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-              placeholder="Type your message..."
-              disabled={isProcessing || isListening}
-            />
-            <button
-              type="submit"
-              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-3 rounded-xl transition-all duration-200 disabled:opacity-50"
-              disabled={isProcessing || !textInput.trim() || isListening}
-              title="Send"
-            >
-              <Send className="h-5 w-5" />
-            </button>
-          </form>
-
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={startVoiceRecognition}
-              className={`px-4 py-3 rounded-xl font-medium transition-all duration-200 flex items-center space-x-2 ${
-                isListening
-                  ? 'bg-red-600 hover:bg-red-700 text-white recording-pulse'
-                  : 'bg-blue-600 hover:bg-blue-700 text-white'
-              }`}
-              disabled={isProcessing}
-            >
-              {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-              <span className="hidden sm:inline">{isListening ? 'Listening...' : 'Voice'}</span>
-            </button>
-            
-            {currentSession && (
-              <button
-                onClick={handleGenerateReport}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-xl transition-all duration-200 flex items-center space-x-2"
-                title="Generate mood report"
-              >
-                <FileText className="h-5 w-5" />
-                <span className="hidden sm:inline">Report</span>
-              </button>
-            )}
-          </div>
-        </div>
-
         {/* Chat Messages */}
-        <div className="max-h-96 overflow-y-auto space-y-4 mb-4">
-          {messages.length === 0 && !currentSession && (
-            <div className="text-center text-gray-400 dark:text-gray-500 py-8">
-              <Brain className="h-12 w-12 mx-auto mb-4 text-gray-300 dark:text-gray-600" />
-              <p>Start a new conversation or select an existing chat!</p>
+        <div className="p-6 pb-0">
+          <div className="max-h-96 overflow-y-auto space-y-4 mb-4">
+            {messages.length === 0 && !currentSession && (
+              <div className="text-center text-gray-400 dark:text-gray-500 py-8">
+                <Brain className="h-12 w-12 mx-auto mb-4 text-gray-300 dark:text-gray-600" />
+                <p>Start a new conversation or select an existing chat!</p>
+              </div>
+            )}
+            
+            {messages.map((message) => (
+              <div key={message.id} className={`flex ${message.message_type === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-xs sm:max-w-md lg:max-w-lg px-4 py-3 rounded-2xl break-words ${
+                  message.message_type === 'user' 
+                    ? 'bg-purple-600 text-white ml-8' 
+                    : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white mr-8 border border-gray-200 dark:border-gray-700'
+                }`}>
+                  <div className="flex items-start space-x-2">
+                    {message.message_type === 'ai' && (
+                      <Brain className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                    )}
+                    <p className="text-sm">{message.content}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {isProcessing && (
+            <div className="text-center mb-4">
+              <div className="inline-flex items-center space-x-2 text-purple-600 dark:text-purple-400">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600"></div>
+                <span>AI is thinking...</span>
+              </div>
             </div>
           )}
-          
-          {messages.map((message) => (
-            <div key={message.id} className={`flex items-start space-x-3 ${message.message_type === 'ai' ? 'ml-8' : ''}`}>
-              <div className={`p-2 rounded-lg ${
-                message.message_type === 'user' 
-                  ? 'bg-purple-100 dark:bg-purple-900/30' 
-                  : 'bg-blue-100 dark:bg-blue-900/30'
-              }`}>
-                {message.message_type === 'user' ? (
-                  <MessageSquare className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                ) : (
-                  <Brain className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                )}
-              </div>
-              <div className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-4 py-3 rounded-xl max-w-xs sm:max-w-md lg:max-w-lg break-words">
-                <strong>{message.message_type === 'user' ? 'You' : 'AI'}:</strong> {message.content}
-              </div>
-            </div>
-          ))}
         </div>
 
-        {isProcessing && (
-          <div className="text-center">
-            <div className="inline-flex items-center space-x-2 text-purple-600 dark:text-purple-400">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600"></div>
-              <span>AI is thinking...</span>
+        {/* Input Area */}
+        <div className="p-6 pt-0 border-t border-purple-200 dark:border-purple-700">
+          <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4">
+            <form onSubmit={handleTextSubmit} className="flex items-center space-x-2 flex-1 max-w-2xl">
+              <input
+                type="text"
+                value={textInput}
+                onChange={(e) => setTextInput(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-purple-200 dark:border-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                placeholder="Type your message..."
+                disabled={isProcessing || isListening}
+              />
+              <button
+                type="submit"
+                className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-3 rounded-xl transition-all duration-200 disabled:opacity-50"
+                disabled={isProcessing || !textInput.trim() || isListening}
+                title="Send"
+              >
+                <Send className="h-5 w-5" />
+              </button>
+            </form>
+
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={startVoiceRecognition}
+                className={`px-4 py-3 rounded-xl font-medium transition-all duration-200 flex items-center space-x-2 ${
+                  isListening
+                    ? 'bg-red-600 hover:bg-red-700 text-white recording-pulse'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white'
+                }`}
+                disabled={isProcessing}
+              >
+                {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                <span className="hidden sm:inline">{isListening ? 'Listening...' : 'Voice'}</span>
+              </button>
+              
+              {currentSession && messages.length > 0 && (
+                <button
+                  onClick={handleGenerateReport}
+                  disabled={isProcessing}
+                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-xl transition-all duration-200 flex items-center space-x-2 disabled:opacity-50"
+                  title="Generate AI mood report"
+                >
+                  <FileText className="h-5 w-5" />
+                  <span className="hidden sm:inline">Report</span>
+                </button>
+              )}
             </div>
           </div>
-        )}
+        </div>
       </motion.div>
 
       {/* Mood Report Modal */}
@@ -446,10 +551,10 @@ export function VoiceAI() {
               initial={{ scale: 0.95 }}
               animate={{ scale: 1 }}
               exit={{ scale: 0.95 }}
-              className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full"
+              className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Mood Analysis Report</h3>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">AI-Generated Mood Analysis Report</h3>
               
               <div className="space-y-4">
                 <div>
@@ -472,7 +577,7 @@ export function VoiceAI() {
                   </p>
                 </div>
                 
-                {moodReport.emotions.length > 0 && (
+                {moodReport.emotions && moodReport.emotions.length > 0 && (
                   <div>
                     <p className="font-medium text-gray-700 dark:text-gray-300">Detected Emotions:</p>
                     <p className="text-gray-600 dark:text-gray-400">{moodReport.emotions.join(', ')}</p>
@@ -484,9 +589,31 @@ export function VoiceAI() {
                   <p className="text-gray-600 dark:text-gray-400">{moodReport.summary}</p>
                 </div>
                 
-                {moodReport.recommendations.length > 0 && (
+                {moodReport.key_concerns && moodReport.key_concerns.length > 0 && (
                   <div>
-                    <p className="font-medium text-gray-700 dark:text-gray-300">Recommendations:</p>
+                    <p className="font-medium text-gray-700 dark:text-gray-300">Key Concerns:</p>
+                    <ul className="list-disc list-inside text-gray-600 dark:text-gray-400 space-y-1">
+                      {moodReport.key_concerns.map((concern: string, index: number) => (
+                        <li key={index}>{concern}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                
+                {moodReport.positive_indicators && moodReport.positive_indicators.length > 0 && (
+                  <div>
+                    <p className="font-medium text-gray-700 dark:text-gray-300">Positive Indicators:</p>
+                    <ul className="list-disc list-inside text-gray-600 dark:text-gray-400 space-y-1">
+                      {moodReport.positive_indicators.map((indicator: string, index: number) => (
+                        <li key={index}>{indicator}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                
+                {moodReport.recommendations && moodReport.recommendations.length > 0 && (
+                  <div>
+                    <p className="font-medium text-gray-700 dark:text-gray-300">AI Recommendations:</p>
                     <ul className="list-disc list-inside text-gray-600 dark:text-gray-400 space-y-1">
                       {moodReport.recommendations.map((rec: string, index: number) => (
                         <li key={index}>{rec}</li>
@@ -494,12 +621,20 @@ export function VoiceAI() {
                     </ul>
                   </div>
                 )}
+
+                {moodReport.confidence_score && (
+                  <div>
+                    <p className="font-medium text-gray-700 dark:text-gray-300">Confidence Score:</p>
+                    <p className="text-gray-600 dark:text-gray-400">{(moodReport.confidence_score * 100).toFixed(0)}%</p>
+                  </div>
+                )}
               </div>
               
               <div className="flex justify-end space-x-3 mt-6">
                 <button
                   onClick={() => {
-                    navigator.clipboard.writeText(JSON.stringify(moodReport, null, 2));
+                    const reportText = `AI Mood Analysis Report\n\nOverall Mood: ${moodReport.overall_mood}\nStress Level: ${moodReport.stress_level}\nEmotions: ${moodReport.emotions?.join(', ') || 'N/A'}\n\nSummary: ${moodReport.summary}\n\nRecommendations:\n${moodReport.recommendations?.map((r: string) => `• ${r}`).join('\n') || 'None'}`;
+                    navigator.clipboard.writeText(reportText);
                     toast.success('Report copied to clipboard!');
                   }}
                   className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors duration-200"

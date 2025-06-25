@@ -17,6 +17,74 @@ body {
   color: #f1f5f9;
 }
 
+/* Enhanced dark mode text colors */
+.dark h1,
+.dark h2,
+.dark h3,
+.dark h4,
+.dark h5,
+.dark h6 {
+  color: #f8fafc;
+}
+
+.dark p {
+  color: #e2e8f0;
+}
+
+.dark .text-gray-900 {
+  color: #f8fafc !important;
+}
+
+.dark .text-gray-800 {
+  color: #f1f5f9 !important;
+}
+
+.dark .text-gray-700 {
+  color: #e2e8f0 !important;
+}
+
+.dark .text-gray-600 {
+  color: #cbd5e1 !important;
+}
+
+.dark .text-gray-500 {
+  color: #94a3b8 !important;
+}
+
+.dark .text-gray-400 {
+  color: #64748b !important;
+}
+
+/* Dark mode background improvements */
+.dark .bg-white {
+  background-color: #1e293b !important;
+}
+
+.dark .bg-gray-50 {
+  background-color: #0f172a !important;
+}
+
+.dark .bg-gray-100 {
+  background-color: #1e293b !important;
+}
+
+.dark .bg-gray-200 {
+  background-color: #334155 !important;
+}
+
+/* Dark mode border improvements */
+.dark .border-gray-100 {
+  border-color: #334155 !important;
+}
+
+.dark .border-gray-200 {
+  border-color: #475569 !important;
+}
+
+.dark .border-gray-300 {
+  border-color: #64748b !important;
+}
+
 /* Custom mood slider styling */
 .mood-slider::-webkit-slider-thumb {
   appearance: none;
@@ -304,4 +372,52 @@ select:focus {
 .encrypted-indicator::before {
   content: '🔒';
   margin-right: 4px;
+}
+
+/* Chat message styling improvements */
+.chat-message-user {
+  @apply bg-purple-600 text-white rounded-2xl px-4 py-3 max-w-xs sm:max-w-md lg:max-w-lg ml-auto;
+}
+
+.chat-message-ai {
+  @apply bg-white dark:bg-gray-800 text-gray-900 dark:text-white rounded-2xl px-4 py-3 max-w-xs sm:max-w-md lg:max-w-lg border border-gray-200 dark:border-gray-700;
+}
+
+/* Improved form styling for dark mode */
+.dark input[type="text"],
+.dark input[type="email"],
+.dark input[type="tel"],
+.dark input[type="password"],
+.dark input[type="datetime-local"],
+.dark textarea,
+.dark select {
+  background-color: #374151;
+  border-color: #4b5563;
+  color: #f9fafb;
+}
+
+.dark input[type="text"]:focus,
+.dark input[type="email"]:focus,
+.dark input[type="tel"]:focus,
+.dark input[type="password"]:focus,
+.dark input[type="datetime-local"]:focus,
+.dark textarea:focus,
+.dark select:focus {
+  background-color: #374151;
+  border-color: #8b5cf6;
+  color: #f9fafb;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #9ca3af;
+}
+
+/* Dark mode improvements for disabled inputs */
+.dark input:disabled,
+.dark textarea:disabled,
+.dark select:disabled {
+  background-color: #1f2937;
+  color: #6b7280;
+  border-color: #374151;
 }
