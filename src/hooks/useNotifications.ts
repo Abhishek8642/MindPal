@@ -16,6 +16,37 @@ interface Notification {
 export function useNotifications() {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [permission, setPermission] = useState<NotificationPermission>('default');
+
+  useEffect(() => {
+    if ('Notification' in window) {
+      setPermission(Notification.permission);
+    }
+  }, []);
+
+  const requestNotificationPermission = async (): Promise<boolean> => {
+    if (!('Notification' in window)) {
+      toast.error('This browser does not support notifications');
+      return false;
+    }
+
+    try {
+      const permission = await Notification.requestPermission();
+      setPermission(permission);
+      
+      if (permission === 'granted') {
+        toast.success('Notifications enabled!');
+        return true;
+      } else {
+        toast.error('Notifications permission denied');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error requesting notification permission:', error);
+      toast.error('Failed to request notification permission');
+      return false;
+    }
+  };
 
   const scheduleNotification = async (
     type: 'task_reminder' | 'mood_reminder' | 'daily_summary',
@@ -23,9 +54,18 @@ export function useNotifications() {
     message: string,
     scheduledFor: Date
   ) => {
-    if (!user) return;
+    if (!user) {
+      toast.error('Please sign in to schedule notifications');
+      return;
+    }
 
     try {
+      // Ensure we have notification permission
+      if (permission !== 'granted') {
+        const hasPermission = await requestNotificationPermission();
+        if (!hasPermission) return;
+      }
+
       const { data, error } = await supabase
         .from('notifications')
         .insert([{
@@ -43,33 +83,45 @@ export function useNotifications() {
       setNotifications(prev => [...prev, data]);
       
       // Schedule browser notification
-      if ('Notification' in window && Notification.permission === 'granted') {
-        const timeUntilNotification = scheduledFor.getTime() - Date.now();
-        if (timeUntilNotification > 0) {
-          setTimeout(() => {
-            new Notification(title, {
+      const timeUntilNotification = scheduledFor.getTime() - Date.now();
+      
+      if (timeUntilNotification > 0) {
+        setTimeout(() => {
+          if (permission === 'granted') {
+            const notification = new Notification(title, {
               body: message,
               icon: '/vite.svg',
+              badge: '/vite.svg',
+              tag: `mindpal-${type}`,
+              requireInteraction: true,
             });
-          }, timeUntilNotification);
-        }
+
+            notification.onclick = () => {
+              window.focus();
+              notification.close();
+            };
+
+            // Auto close after 10 seconds
+            setTimeout(() => notification.close(), 10000);
+          }
+        }, timeUntilNotification);
       }
+
+      toast.success(`${title} scheduled successfully!`);
     } catch (error) {
       console.error('Error scheduling notification:', error);
       toast.error('Failed to schedule notification');
     }
   };
 
-  const requestNotificationPermission = async () => {
-    if ('Notification' in window) {
-      const permission = await Notification.requestPermission();
-      return permission === 'granted';
-    }
-    return false;
-  };
-
   const scheduleTaskReminder = async (taskTitle: string, dueDate: Date) => {
     const reminderTime = new Date(dueDate.getTime() - 30 * 60 * 1000); // 30 minutes before
+    
+    if (reminderTime <= new Date()) {
+      toast.error('Cannot schedule reminder for past dates');
+      return;
+    }
+
     await scheduleNotification(
       'task_reminder',
       'Task Reminder',
@@ -94,6 +146,11 @@ export function useNotifications() {
   const scheduleDailySummary = async () => {
     const today = new Date();
     today.setHours(20, 0, 0, 0); // 8 PM today
+    
+    // If it's already past 8 PM, schedule for tomorrow
+    if (today <= new Date()) {
+      today.setDate(today.getDate() + 1);
+    }
     
     await scheduleNotification(
       'daily_summary',
@@ -120,19 +177,37 @@ export function useNotifications() {
     }
   }, [user]);
 
+  const deleteNotification = async (notificationId: string) => {
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .delete()
+        .eq('id', notificationId);
+
+      if (error) throw error;
+
+      setNotifications(prev => prev.filter(n => n.id !== notificationId));
+      toast.success('Notification deleted');
+    } catch (error) {
+      console.error('Error deleting notification:', error);
+      toast.error('Failed to delete notification');
+    }
+  };
+
   useEffect(() => {
     if (user) {
       loadNotifications();
-      requestNotificationPermission();
     }
   }, [user, loadNotifications]);
 
   return {
     notifications,
+    permission,
     scheduleNotification,
     scheduleTaskReminder,
     scheduleMoodReminder,
     scheduleDailySummary,
     requestNotificationPermission,
+    deleteNotification,
   };
 }

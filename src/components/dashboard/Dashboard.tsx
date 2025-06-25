@@ -9,7 +9,8 @@ import {
   Target,
   Award,
   ExternalLink,
-  Plus
+  Plus,
+  Bell
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useNotifications } from '../../hooks/useNotifications';
@@ -21,7 +22,12 @@ import toast from 'react-hot-toast';
 export function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const { scheduleMoodReminder, scheduleDailySummary } = useNotifications();
+  const { 
+    scheduleMoodReminder, 
+    scheduleDailySummary, 
+    requestNotificationPermission,
+    permission 
+  } = useNotifications();
   const [stats, setStats] = useState({
     totalTasks: 0,
     completedTasks: 0,
@@ -51,7 +57,7 @@ export function Dashboard() {
 
       // Get voice sessions count
       const { data: voiceData } = await supabase
-        .from('voice_sessions')
+        .from('chat_sessions')
         .select('id')
         .eq('user_id', user.id);
 
@@ -69,8 +75,12 @@ export function Dashboard() {
   useEffect(() => {
     if (user) {
       loadStats();
+      // Request notification permission on dashboard load
+      if (permission === 'default') {
+        requestNotificationPermission();
+      }
     }
-  }, [user, loadStats]);
+  }, [user, loadStats, permission, requestNotificationPermission]);
 
   const handleQuickAction = async (action: string) => {
     try {
@@ -86,11 +96,12 @@ export function Dashboard() {
           break;
         case 'schedule-mood-reminder':
           await scheduleMoodReminder();
-          toast.success('Mood reminder scheduled for tomorrow!');
           break;
         case 'schedule-daily-summary':
           await scheduleDailySummary();
-          toast.success('Daily summary scheduled for tonight!');
+          break;
+        case 'enable-notifications':
+          await requestNotificationPermission();
           break;
         default:
           break;
@@ -110,8 +121,8 @@ export function Dashboard() {
       subtitle: `${Math.round(completionRate)}% completion rate`,
       icon: CheckSquare,
       color: 'from-green-400 to-emerald-500',
-      bgColor: 'bg-green-50',
-      textColor: 'text-green-700',
+      bgColor: 'bg-green-50 dark:bg-green-900/20',
+      textColor: 'text-green-700 dark:text-green-400',
     },
     {
       title: "Today's Mood",
@@ -119,17 +130,17 @@ export function Dashboard() {
       subtitle: stats.todayMood ? 'Feeling great!' : 'Log your mood',
       icon: Heart,
       color: 'from-pink-400 to-rose-500',
-      bgColor: 'bg-pink-50',
-      textColor: 'text-pink-700',
+      bgColor: 'bg-pink-50 dark:bg-pink-900/20',
+      textColor: 'text-pink-700 dark:text-pink-400',
     },
     {
-      title: 'Voice Sessions',
+      title: 'Chat Sessions',
       value: stats.voiceSessions.toString(),
       subtitle: 'AI conversations',
       icon: Mic,
       color: 'from-purple-400 to-violet-500',
-      bgColor: 'bg-purple-50',
-      textColor: 'text-purple-700',
+      bgColor: 'bg-purple-50 dark:bg-purple-900/20',
+      textColor: 'text-purple-700 dark:text-purple-400',
     },
     {
       title: 'Streak',
@@ -137,8 +148,8 @@ export function Dashboard() {
       subtitle: 'Keep it up!',
       icon: Award,
       color: 'from-orange-400 to-amber-500',
-      bgColor: 'bg-orange-50',
-      textColor: 'text-orange-700',
+      bgColor: 'bg-orange-50 dark:bg-orange-900/20',
+      textColor: 'text-orange-700 dark:text-orange-400',
     },
   ];
 
@@ -159,6 +170,33 @@ export function Dashboard() {
         </p>
       </motion.div>
 
+      {/* Notification Permission Banner */}
+      {permission !== 'granted' && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <Bell className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+              <div>
+                <p className="font-medium text-yellow-800 dark:text-yellow-300">Enable Notifications</p>
+                <p className="text-sm text-yellow-700 dark:text-yellow-400">
+                  Get reminders for tasks, mood check-ins, and daily summaries
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => handleQuickAction('enable-notifications')}
+              className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg transition-colors duration-200"
+            >
+              Enable
+            </button>
+          </div>
+        </motion.div>
+      )}
+
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {statCards.map((card, index) => {
@@ -169,7 +207,7 @@ export function Dashboard() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: index * 0.1 }}
-              className={`${card.bgColor} dark:bg-gray-800 rounded-2xl p-6 hover:shadow-lg transition-all duration-300 cursor-pointer transform hover:-translate-y-1`}
+              className={`${card.bgColor} rounded-2xl p-6 hover:shadow-lg transition-all duration-300 cursor-pointer transform hover:-translate-y-1`}
             >
               <div className="flex items-center justify-between mb-4">
                 <div className={`bg-gradient-to-r ${card.color} p-3 rounded-xl`}>
@@ -177,7 +215,7 @@ export function Dashboard() {
                 </div>
                 <TrendingUp className="h-4 w-4 text-gray-400" />
               </div>
-              <div className={`${card.textColor} dark:text-gray-300 space-y-1`}>
+              <div className={`${card.textColor} space-y-1`}>
                 <p className="text-sm font-medium opacity-80">{card.title}</p>
                 <p className="text-2xl font-bold">{card.value}</p>
                 <p className="text-xs opacity-70">{card.subtitle}</p>
@@ -207,7 +245,7 @@ export function Dashboard() {
             className="bg-gradient-to-r from-purple-500 to-violet-600 text-white p-6 rounded-xl hover:shadow-lg transition-all duration-200 text-left"
           >
             <Mic className="h-8 w-8 mb-3" />
-            <h3 className="font-semibold mb-1">Voice Input</h3>
+            <h3 className="font-semibold mb-1">Voice Chat</h3>
             <p className="text-sm opacity-90">Talk to your AI companion</p>
           </motion.button>
 
@@ -245,7 +283,7 @@ export function Dashboard() {
             <Plus className="h-6 w-6" />
             <div>
               <h3 className="font-semibold">Schedule Mood Reminder</h3>
-              <p className="text-sm opacity-90">Get reminded to check your mood</p>
+              <p className="text-sm opacity-90">Get reminded to check your mood tomorrow</p>
             </div>
           </motion.button>
 
@@ -258,7 +296,7 @@ export function Dashboard() {
             <Plus className="h-6 w-6" />
             <div>
               <h3 className="font-semibold">Schedule Daily Summary</h3>
-              <p className="text-sm opacity-90">Get your end-of-day report</p>
+              <p className="text-sm opacity-90">Get your end-of-day report tonight</p>
             </div>
           </motion.button>
         </div>

@@ -35,9 +35,13 @@ export function useSettings() {
   const { user } = useAuth();
   const [settings, setSettings] = useState<UserSettings>(defaultSettings);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   const loadSettings = useCallback(async () => {
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
     try {
       const { data, error } = await supabase
@@ -51,19 +55,21 @@ export function useSettings() {
       }
 
       if (data) {
-        setSettings({
-          theme: data.theme,
-          language: data.language,
-          voice_speed: data.voice_speed,
-          ai_personality: data.ai_personality,
-          task_reminders: data.task_reminders,
-          mood_reminders: data.mood_reminders,
-          daily_summary: data.daily_summary,
-          email_notifications: data.email_notifications,
-          data_sharing: data.data_sharing,
-          analytics: data.analytics,
-          voice_recordings: data.voice_recordings,
-        });
+        const loadedSettings: UserSettings = {
+          theme: data.theme || 'light',
+          language: data.language || 'en',
+          voice_speed: data.voice_speed || 'normal',
+          ai_personality: data.ai_personality || 'supportive',
+          task_reminders: data.task_reminders ?? true,
+          mood_reminders: data.mood_reminders ?? true,
+          daily_summary: data.daily_summary ?? true,
+          email_notifications: data.email_notifications ?? false,
+          data_sharing: data.data_sharing ?? false,
+          analytics: data.analytics ?? true,
+          voice_recordings: data.voice_recordings ?? true,
+        };
+        setSettings(loadedSettings);
+        applyTheme(loadedSettings.theme);
       } else {
         // Create default settings if they don't exist
         await createDefaultSettings();
@@ -80,31 +86,48 @@ export function useSettings() {
     if (!user) return;
 
     try {
+      setSaving(true);
       const { error } = await supabase
         .from('user_settings')
         .insert([{ user_id: user.id, ...defaultSettings }]);
 
       if (error) throw error;
+      
+      setSettings(defaultSettings);
+      applyTheme(defaultSettings.theme);
     } catch (error) {
       console.error('Error creating default settings:', error);
+      toast.error('Failed to create default settings');
+    } finally {
+      setSaving(false);
     }
   };
 
   const updateSettings = async (newSettings: Partial<UserSettings>) => {
-    if (!user) return;
+    if (!user) {
+      toast.error('Please sign in to save settings');
+      return;
+    }
 
     try {
+      setSaving(true);
       const updatedSettings = { ...settings, ...newSettings };
       
       const { error } = await supabase
         .from('user_settings')
-        .upsert([{ user_id: user.id, ...updatedSettings }]);
+        .upsert([{ 
+          user_id: user.id, 
+          ...updatedSettings,
+          updated_at: new Date().toISOString()
+        }], {
+          onConflict: 'user_id'
+        });
 
       if (error) throw error;
 
       setSettings(updatedSettings);
       
-      // Apply theme immediately
+      // Apply theme immediately if changed
       if (newSettings.theme) {
         applyTheme(newSettings.theme);
       }
@@ -112,7 +135,9 @@ export function useSettings() {
       toast.success('Settings saved successfully!');
     } catch (error) {
       console.error('Error updating settings:', error);
-      toast.error('Failed to save settings');
+      toast.error('Failed to save settings. Please try again.');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -130,17 +155,26 @@ export function useSettings() {
   useEffect(() => {
     if (user) {
       loadSettings();
+    } else {
+      setLoading(false);
     }
   }, [user, loadSettings]);
 
+  // Listen for system theme changes when auto mode is enabled
   useEffect(() => {
-    // Apply theme on settings load
-    applyTheme(settings.theme);
+    if (settings.theme === 'auto') {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const handleChange = () => applyTheme('auto');
+      
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    }
   }, [settings.theme]);
 
   return {
     settings,
     loading,
+    saving,
     updateSettings,
   };
 }
