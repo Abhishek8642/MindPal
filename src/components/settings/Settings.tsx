@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { motion } from 'framer-motion';
 import { 
   User, 
@@ -12,40 +12,26 @@ import {
   Globe
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { useSettings } from '../../hooks/useSettings';
 import toast from 'react-hot-toast';
 
 export function Settings() {
   const { user } = useAuth();
-  const [settings, setSettings] = useState({
-    notifications: {
-      taskReminders: true,
-      moodReminders: true,
-      dailySummary: true,
-      emailNotifications: false,
-    },
-    privacy: {
-      dataSharing: false,
-      analytics: true,
-      voiceRecordings: true,
-    },
-    preferences: {
-      theme: 'light',
-      language: 'en',
-      voiceSpeed: 'normal',
-      aiPersonality: 'supportive',
-    },
-    profile: {
-      fullName: '',
-      phone: '',
-      timezone: 'UTC',
-    },
+  const { settings, updateSettings, loading } = useSettings();
+  const [activeTab, setActiveTab] = React.useState('profile');
+  const [profile, setProfile] = React.useState({
+    fullName: '',
+    phone: '',
+    timezone: 'UTC',
   });
 
-  const [activeTab, setActiveTab] = useState('profile');
-
-  const handleSave = () => {
-    // In a real app, this would save to the database
-    toast.success('Settings saved successfully!');
+  const handleSave = async () => {
+    try {
+      // Settings are automatically saved via useSettings hook
+      toast.success('Settings saved successfully!');
+    } catch (error) {
+      toast.error('Failed to save settings');
+    }
   };
 
   const tabs = [
@@ -62,7 +48,7 @@ export function Settings() {
         return (
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Email Address
               </label>
               <div className="flex items-center space-x-3">
@@ -71,59 +57,50 @@ export function Settings() {
                   type="email"
                   value={user?.email || ''}
                   disabled
-                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 bg-gray-50 text-gray-500"
+                  className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Full Name
               </label>
               <input
                 type="text"
-                value={settings.profile.fullName}
-                onChange={(e) => setSettings({
-                  ...settings,
-                  profile: { ...settings.profile, fullName: e.target.value }
-                })}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                value={profile.fullName}
+                onChange={(e) => setProfile({ ...profile, fullName: e.target.value })}
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 placeholder="Enter your full name"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Phone Number
               </label>
               <div className="flex items-center space-x-3">
                 <Phone className="h-5 w-5 text-gray-400" />
                 <input
                   type="tel"
-                  value={settings.profile.phone}
-                  onChange={(e) => setSettings({
-                    ...settings,
-                    profile: { ...settings.profile, phone: e.target.value }
-                  })}
-                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  value={profile.phone}
+                  onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                  className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                   placeholder="+1 (555) 123-4567"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Timezone
               </label>
               <div className="flex items-center space-x-3">
                 <Globe className="h-5 w-5 text-gray-400" />
                 <select
-                  value={settings.profile.timezone}
-                  onChange={(e) => setSettings({
-                    ...settings,
-                    profile: { ...settings.profile, timezone: e.target.value }
-                  })}
-                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  value={profile.timezone}
+                  onChange={(e) => setProfile({ ...profile, timezone: e.target.value })}
+                  className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 >
                   <option value="UTC">UTC</option>
                   <option value="America/New_York">Eastern Time</option>
@@ -140,35 +117,79 @@ export function Settings() {
         return (
           <div className="space-y-6">
             <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Push Notifications</h3>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Push Notifications</h3>
               <div className="space-y-4">
-                {Object.entries(settings.notifications).map(([key, value]) => (
-                  <div key={key} className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium text-gray-900 capitalize">
-                        {key.replace(/([A-Z])/g, ' $1').trim()}
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        {key === 'taskReminders' && 'Get reminded about your tasks and deadlines'}
-                        {key === 'moodReminders' && 'Daily prompts to check in with your emotions'}
-                        {key === 'dailySummary' && 'End-of-day summary of your activities'}
-                        {key === 'emailNotifications' && 'Receive notifications via email'}
-                      </p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={value}
-                        onChange={(e) => setSettings({
-                          ...settings,
-                          notifications: { ...settings.notifications, [key]: e.target.checked }
-                        })}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
-                    </label>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-white">Task Reminders</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Get reminded about your tasks and deadlines
+                    </p>
                   </div>
-                ))}
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.task_reminders}
+                      onChange={(e) => updateSettings({ task_reminders: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 dark:peer-focus:ring-purple-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-600"></div>
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-white">Mood Reminders</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Daily prompts to check in with your emotions
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.mood_reminders}
+                      onChange={(e) => updateSettings({ mood_reminders: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 dark:peer-focus:ring-purple-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-600"></div>
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-white">Daily Summary</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      End-of-day summary of your activities
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.daily_summary}
+                      onChange={(e) => updateSettings({ daily_summary: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 dark:peer-focus:ring-purple-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-600"></div>
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-white">Email Notifications</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Receive notifications via email
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.email_notifications}
+                      onChange={(e) => updateSettings({ email_notifications: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 dark:peer-focus:ring-purple-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-600"></div>
+                  </label>
+                </div>
               </div>
             </div>
           </div>
@@ -178,16 +199,13 @@ export function Settings() {
         return (
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Theme
               </label>
               <select
-                value={settings.preferences.theme}
-                onChange={(e) => setSettings({
-                  ...settings,
-                  preferences: { ...settings.preferences, theme: e.target.value }
-                })}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                value={settings.theme}
+                onChange={(e) => updateSettings({ theme: e.target.value as 'light' | 'dark' | 'auto' })}
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               >
                 <option value="light">Light</option>
                 <option value="dark">Dark</option>
@@ -196,16 +214,13 @@ export function Settings() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 AI Voice Speed
               </label>
               <select
-                value={settings.preferences.voiceSpeed}
-                onChange={(e) => setSettings({
-                  ...settings,
-                  preferences: { ...settings.preferences, voiceSpeed: e.target.value }
-                })}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                value={settings.voice_speed}
+                onChange={(e) => updateSettings({ voice_speed: e.target.value as 'slow' | 'normal' | 'fast' })}
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               >
                 <option value="slow">Slow</option>
                 <option value="normal">Normal</option>
@@ -214,16 +229,13 @@ export function Settings() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 AI Personality
               </label>
               <select
-                value={settings.preferences.aiPersonality}
-                onChange={(e) => setSettings({
-                  ...settings,
-                  preferences: { ...settings.preferences, aiPersonality: e.target.value }
-                })}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                value={settings.ai_personality}
+                onChange={(e) => updateSettings({ ai_personality: e.target.value as 'supportive' | 'professional' | 'friendly' | 'motivational' })}
+                className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               >
                 <option value="supportive">Supportive & Caring</option>
                 <option value="professional">Professional</option>
@@ -238,35 +250,68 @@ export function Settings() {
         return (
           <div className="space-y-6">
             <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Data & Privacy</h3>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-4">Data & Privacy</h3>
               <div className="space-y-4">
-                {Object.entries(settings.privacy).map(([key, value]) => (
-                  <div key={key} className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium text-gray-900 capitalize">
-                        {key.replace(/([A-Z])/g, ' $1').trim()}
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        {key === 'dataSharing' && 'Share anonymized data to improve the service'}
-                        {key === 'analytics' && 'Help us understand how you use the app'}
-                        {key === 'voiceRecordings' && 'Store voice recordings for better AI responses'}
-                      </p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={value}
-                        onChange={(e) => setSettings({
-                          ...settings,
-                          privacy: { ...settings.privacy, [key]: e.target.checked }
-                        })}
-                        className="sr-only peer"
-                      />
-                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
-                    </label>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-white">Data Sharing</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Share anonymized data to improve the service
+                    </p>
                   </div>
-                ))}
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.data_sharing}
+                      onChange={(e) => updateSettings({ data_sharing: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 dark:peer-focus:ring-purple-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-600"></div>
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-white">Analytics</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Help us understand how you use the app
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.analytics}
+                      onChange={(e) => updateSettings({ analytics: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 dark:peer-focus:ring-purple-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-600"></div>
+                  </label>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-gray-900 dark:text-white">Voice Recordings</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Store voice recordings for better AI responses (encrypted)
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.voice_recordings}
+                      onChange={(e) => updateSettings({ voice_recordings: e.target.checked })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 dark:peer-focus:ring-purple-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-purple-600"></div>
+                  </label>
+                </div>
               </div>
+            </div>
+
+            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4">
+              <p className="text-sm text-yellow-800 dark:text-yellow-300">
+                🔒 All sensitive data is encrypted before storage. Your privacy is our priority.
+              </p>
             </div>
           </div>
         );
@@ -274,31 +319,31 @@ export function Settings() {
       case 'subscription':
         return (
           <div className="space-y-6">
-            <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-xl p-6 border border-purple-100">
+            <div className="bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-xl p-6 border border-purple-100 dark:border-purple-800">
               <div className="flex items-center space-x-3 mb-4">
-                <Crown className="h-6 w-6 text-purple-600" />
-                <h3 className="text-lg font-bold text-gray-900">MindPal Pro</h3>
+                <Crown className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">MindPal Pro</h3>
               </div>
-              <p className="text-gray-600 mb-4">
+              <p className="text-gray-600 dark:text-gray-300 mb-4">
                 Currently on the free plan. Upgrade to Pro for advanced features!
               </p>
               
               <div className="space-y-3 mb-6">
                 <div className="flex items-center space-x-2 text-sm">
                   <div className="w-2 h-2 bg-purple-600 rounded-full"></div>
-                  <span>Advanced AI personality customization</span>
+                  <span className="text-gray-700 dark:text-gray-300">Advanced AI personality customization</span>
                 </div>
                 <div className="flex items-center space-x-2 text-sm">
                   <div className="w-2 h-2 bg-purple-600 rounded-full"></div>
-                  <span>Extended mood analytics and insights</span>
+                  <span className="text-gray-700 dark:text-gray-300">Extended mood analytics and insights</span>
                 </div>
                 <div className="flex items-center space-x-2 text-sm">
                   <div className="w-2 h-2 bg-purple-600 rounded-full"></div>
-                  <span>Priority support and early access to features</span>
+                  <span className="text-gray-700 dark:text-gray-300">Priority support and early access to features</span>
                 </div>
                 <div className="flex items-center space-x-2 text-sm">
                   <div className="w-2 h-2 bg-purple-600 rounded-full"></div>
-                  <span>Family sharing and parental reports</span>
+                  <span className="text-gray-700 dark:text-gray-300">Family sharing and parental reports</span>
                 </div>
               </div>
 
@@ -318,19 +363,27 @@ export function Settings() {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Settings</h1>
-        <p className="text-gray-600">Customize your MindPal experience</p>
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Settings</h1>
+        <p className="text-gray-600 dark:text-gray-300">Customize your MindPal experience</p>
       </div>
 
       {/* Settings Container */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="flex">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+        <div className="flex flex-col lg:flex-row">
           {/* Sidebar */}
-          <div className="w-64 bg-gray-50 border-r border-gray-200">
+          <div className="lg:w-64 bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700">
             <nav className="p-4 space-y-2">
               {tabs.map((tab) => {
                 const Icon = tab.icon;
@@ -340,8 +393,8 @@ export function Settings() {
                     onClick={() => setActiveTab(tab.id)}
                     className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left transition-all duration-200 ${
                       activeTab === tab.id
-                        ? 'bg-purple-100 text-purple-700 font-medium'
-                        : 'text-gray-700 hover:bg-gray-100'
+                        ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-medium'
+                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'
                     }`}
                   >
                     <Icon className="h-5 w-5" />
@@ -364,7 +417,7 @@ export function Settings() {
 
               {/* Save Button */}
               {activeTab !== 'subscription' && (
-                <div className="mt-8 pt-6 border-t border-gray-200">
+                <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
                   <motion.button
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}

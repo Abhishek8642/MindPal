@@ -7,6 +7,16 @@ body {
   font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
+/* Dark mode styles */
+.dark {
+  color-scheme: dark;
+}
+
+.dark body {
+  background-color: #0f172a;
+  color: #f1f5f9;
+}
+
 /* Custom mood slider styling */
 .mood-slider::-webkit-slider-thumb {
   appearance: none;
@@ -41,6 +51,10 @@ body {
 
 ::-webkit-scrollbar-track {
   background: #f1f5f9;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: #1e293b;
 }
 
 ::-webkit-scrollbar-thumb {
@@ -81,6 +95,11 @@ select:focus {
   background: rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.dark .glass {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 /* Enhanced hover effects */
@@ -125,16 +144,16 @@ select:focus {
 }
 
 .btn-secondary {
-  @apply bg-white text-gray-700 font-semibold py-2 px-4 rounded-lg border border-gray-300 hover:bg-gray-50 transition-all duration-200;
+  @apply bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 font-semibold py-2 px-4 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-all duration-200;
 }
 
 /* Enhanced card styles */
 .card {
-  @apply bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-all duration-200;
+  @apply bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all duration-200;
 }
 
 .card-gradient {
-  @apply bg-gradient-to-br from-white to-gray-50 rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-all duration-200;
+  @apply bg-gradient-to-br from-white to-gray-50 dark:from-gray-800 dark:to-gray-900 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all duration-200;
 }
 
 /* Mobile-first responsive utilities */
@@ -145,13 +164,6 @@ select:focus {
   
   .mobile-text {
     @apply text-sm;
-  }
-}
-
-/* Dark mode support (for future implementation) */
-@media (prefers-color-scheme: dark) {
-  .dark-mode {
-    @apply bg-gray-900 text-white;
   }
 }
 
@@ -177,7 +189,7 @@ select:focus {
 /* High contrast mode support */
 @media (prefers-contrast: high) {
   .high-contrast {
-    @apply border-2 border-black;
+    @apply border-2 border-black dark:border-white;
   }
 }
 
@@ -190,4 +202,106 @@ select:focus {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Dark mode toggle animation */
+.theme-transition {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Custom toggle switch styles */
+.toggle-switch {
+  @apply relative inline-flex items-center cursor-pointer;
+}
+
+.toggle-switch input {
+  @apply sr-only;
+}
+
+.toggle-switch .slider {
+  @apply w-11 h-6 bg-gray-200 rounded-full transition-colors duration-200 ease-in-out;
+}
+
+.toggle-switch input:checked + .slider {
+  @apply bg-purple-600;
+}
+
+.toggle-switch .slider:before {
+  @apply absolute content-[''] h-5 w-5 left-0.5 bottom-0.5 bg-white rounded-full transition-transform duration-200 ease-in-out;
+}
+
+.toggle-switch input:checked + .slider:before {
+  @apply transform translate-x-5;
+}
+
+/* Notification styles */
+.notification-enter {
+  opacity: 0;
+  transform: translateX(100%);
+}
+
+.notification-enter-active {
+  opacity: 1;
+  transform: translateX(0);
+  transition: opacity 300ms, transform 300ms;
+}
+
+.notification-exit {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.notification-exit-active {
+  opacity: 0;
+  transform: translateX(100%);
+  transition: opacity 300ms, transform 300ms;
+}
+
+/* Voice recording animation */
+.recording-pulse {
+  animation: recording-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes recording-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+/* Mood emoji hover effects */
+.mood-emoji {
+  @apply transition-all duration-200 hover:scale-110 cursor-pointer;
+}
+
+.mood-emoji:hover {
+  filter: brightness(1.1);
+}
+
+/* Task priority indicators */
+.priority-high {
+  @apply border-l-4 border-red-500;
+}
+
+.priority-medium {
+  @apply border-l-4 border-yellow-500;
+}
+
+.priority-low {
+  @apply border-l-4 border-green-500;
+}
+
+/* Encrypted data indicator */
+.encrypted-indicator {
+  @apply inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400;
+}
+
+.encrypted-indicator::before {
+  content: '🔒';
+  margin-right: 4px;
 }
