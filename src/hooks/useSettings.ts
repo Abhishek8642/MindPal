@@ -36,6 +36,7 @@ export function useSettings() {
   const [settings, setSettings] = useState<UserSettings>(defaultSettings);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [creatingDefaults, setCreatingDefaults] = useState(false);
 
   const loadSettings = useCallback(async () => {
     if (!user) {
@@ -73,8 +74,10 @@ export function useSettings() {
         setSettings(loadedSettings);
         applyTheme(loadedSettings.theme);
       } else {
-        // Create default settings if they don't exist
-        await createDefaultSettings();
+        // Create default settings if they don't exist and we're not already creating them
+        if (!creatingDefaults && !saving) {
+          await createDefaultSettings();
+        }
       }
     } catch (error) {
       console.error('Error loading settings:', error);
@@ -82,13 +85,13 @@ export function useSettings() {
     } finally {
       setLoading(false);
     }
-  }, [user, handleSupabaseError]);
+  }, [user, handleSupabaseError, creatingDefaults, saving]);
 
   const createDefaultSettings = async () => {
-    if (!user) return;
+    if (!user || creatingDefaults) return;
 
     try {
-      setSaving(true);
+      setCreatingDefaults(true);
       const { error } = await supabase
         .from('user_settings')
         .upsert([{ 
@@ -110,7 +113,7 @@ export function useSettings() {
       console.error('Error creating default settings:', error);
       toast.error('Failed to create default settings');
     } finally {
-      setSaving(false);
+      setCreatingDefaults(false);
     }
   };
 
