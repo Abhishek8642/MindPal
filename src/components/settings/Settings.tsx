@@ -73,22 +73,67 @@ export function Settings() {
     try {
       setProfileLoading(true);
 
-      // Use upsert to handle both insert and update cases
-      const { error } = await supabase
+      // First check if profile exists
+      const { data: existingProfile, error: checkError } = await supabase
         .from('profiles')
-        .upsert({
-          id: user.id,
-          email: user.email!,
-          full_name: profile.fullName.trim() || null,
-          timezone: profile.timezone,
-          phone: profile.phone.trim() || null,
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'id'
-        });
+        .select('id')
+        .eq('id', user.id)
+        .limit(1);
 
-      if (error) {
-        throw error;
+      if (checkError) {
+        throw checkError;
+      }
+
+      const profileExists = existingProfile && existingProfile.length > 0;
+
+      if (profileExists) {
+        // Update existing profile
+        const { error } = await supabase
+          .from('profiles')
+          .update({
+            full_name: profile.fullName.trim() || null,
+            timezone: profile.timezone,
+            phone: profile.phone.trim() || null,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', user.id);
+
+        if (error) {
+          throw error;
+        }
+      } else {
+        // Insert new profile - this will trigger the user_settings creation
+        const { error } = await supabase
+          .from('profiles')
+          .insert({
+            id: user.id,
+            email: user.email!,
+            full_name: profile.fullName.trim() || null,
+            timezone: profile.timezone,
+            phone: profile.phone.trim() || null,
+          });
+
+        if (error) {
+          // If we get a duplicate key error, it means the profile was created by another process
+          // In this case, try to update instead
+          if (error.code === '23505') {
+            const { error: updateError } = await supabase
+              .from('profiles')
+              .update({
+                full_name: profile.fullName.trim() || null,
+                timezone: profile.timezone,
+                phone: profile.phone.trim() || null,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', user.id);
+
+            if (updateError) {
+              throw updateError;
+            }
+          } else {
+            throw error;
+          }
+        }
       }
 
       toast.success('Profile saved successfully!');
