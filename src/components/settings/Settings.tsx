@@ -73,39 +73,22 @@ export function Settings() {
     try {
       setProfileLoading(true);
 
-      // First check if profile exists
-      const { data: existingProfile } = await supabase
+      // Use upsert to handle both insert and update cases
+      const { error } = await supabase
         .from('profiles')
-        .select('id')
-        .eq('id', user.id)
-        .limit(1);
+        .upsert({
+          id: user.id,
+          email: user.email!,
+          full_name: profile.fullName.trim() || null,
+          timezone: profile.timezone,
+          phone: profile.phone.trim() || null,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'id'
+        });
 
-      if (existingProfile && existingProfile.length > 0) {
-        // Update existing profile
-        const { error } = await supabase
-          .from('profiles')
-          .update({
-            full_name: profile.fullName.trim() || null,
-            timezone: profile.timezone,
-            phone: profile.phone.trim() || null,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', user.id);
-
-        if (error) throw error;
-      } else {
-        // Insert new profile
-        const { error } = await supabase
-          .from('profiles')
-          .insert([{
-            id: user.id,
-            email: user.email!,
-            full_name: profile.fullName.trim() || null,
-            timezone: profile.timezone,
-            phone: profile.phone.trim() || null,
-          }]);
-
-        if (error) throw error;
+      if (error) {
+        throw error;
       }
 
       toast.success('Profile saved successfully!');
