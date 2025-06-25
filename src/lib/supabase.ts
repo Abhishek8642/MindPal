@@ -18,6 +18,8 @@ export type Database = {
           email: string;
           full_name: string | null;
           avatar_url: string | null;
+          timezone: string | null;
+          phone: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -26,10 +28,14 @@ export type Database = {
           email: string;
           full_name?: string | null;
           avatar_url?: string | null;
+          timezone?: string | null;
+          phone?: string | null;
         };
         Update: {
           full_name?: string | null;
           avatar_url?: string | null;
+          timezone?: string | null;
+          phone?: string | null;
         };
       };
       tasks: {
@@ -100,6 +106,52 @@ export type Database = {
         Update: {
           transcript?: string;
           ai_response?: string;
+        };
+      };
+      user_settings: {
+        Row: {
+          id: string;
+          user_id: string;
+          theme: 'light' | 'dark' | 'auto';
+          language: string;
+          voice_speed: 'slow' | 'normal' | 'fast';
+          ai_personality: 'supportive' | 'professional' | 'friendly' | 'motivational';
+          task_reminders: boolean;
+          mood_reminders: boolean;
+          daily_summary: boolean;
+          email_notifications: boolean;
+          data_sharing: boolean;
+          analytics: boolean;
+          voice_recordings: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          theme?: 'light' | 'dark' | 'auto';
+          language?: string;
+          voice_speed?: 'slow' | 'normal' | 'fast';
+          ai_personality?: 'supportive' | 'professional' | 'friendly' | 'motivational';
+          task_reminders?: boolean;
+          mood_reminders?: boolean;
+          daily_summary?: boolean;
+          email_notifications?: boolean;
+          data_sharing?: boolean;
+          analytics?: boolean;
+          voice_recordings?: boolean;
+        };
+        Update: {
+          theme?: 'light' | 'dark' | 'auto';
+          language?: string;
+          voice_speed?: 'slow' | 'normal' | 'fast';
+          ai_personality?: 'supportive' | 'professional' | 'friendly' | 'motivational';
+          task_reminders?: boolean;
+          mood_reminders?: boolean;
+          daily_summary?: boolean;
+          email_notifications?: boolean;
+          data_sharing?: boolean;
+          analytics?: boolean;
+          voice_recordings?: boolean;
         };
       };
     };

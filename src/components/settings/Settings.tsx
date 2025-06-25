@@ -35,19 +35,20 @@ export function Settings() {
       try {
         const { data, error } = await supabase
           .from('profiles')
-          .select('full_name, timezone')
+          .select('full_name, timezone, phone')
           .eq('id', user.id)
-          .single();
+          .limit(1);
 
-        if (error && error.code !== 'PGRST116') {
+        if (error) {
           throw error;
         }
 
         // Handle both successful data and no profile case
+        const profileData = data && data.length > 0 ? data[0] : null;
         setProfile({
-          fullName: data?.full_name || '',
-          phone: '', // Phone not in profiles table yet
-          timezone: data?.timezone || 'UTC',
+          fullName: profileData?.full_name || '',
+          phone: profileData?.phone || '',
+          timezone: profileData?.timezone || 'UTC',
         });
       } catch (error) {
         console.error('Error loading profile:', error);
@@ -72,20 +73,40 @@ export function Settings() {
     try {
       setProfileLoading(true);
 
-      // Update or insert profile
-      const { error } = await supabase
+      // First check if profile exists
+      const { data: existingProfile } = await supabase
         .from('profiles')
-        .upsert([{
-          id: user.id,
-          email: user.email!,
-          full_name: profile.fullName.trim() || null,
-          timezone: profile.timezone,
-          updated_at: new Date().toISOString()
-        }], {
-          onConflict: 'id'
-        });
+        .select('id')
+        .eq('id', user.id)
+        .limit(1);
 
-      if (error) throw error;
+      if (existingProfile && existingProfile.length > 0) {
+        // Update existing profile
+        const { error } = await supabase
+          .from('profiles')
+          .update({
+            full_name: profile.fullName.trim() || null,
+            timezone: profile.timezone,
+            phone: profile.phone.trim() || null,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', user.id);
+
+        if (error) throw error;
+      } else {
+        // Insert new profile
+        const { error } = await supabase
+          .from('profiles')
+          .insert([{
+            id: user.id,
+            email: user.email!,
+            full_name: profile.fullName.trim() || null,
+            timezone: profile.timezone,
+            phone: profile.phone.trim() || null,
+          }]);
+
+        if (error) throw error;
+      }
 
       toast.success('Profile saved successfully!');
     } catch (error) {
