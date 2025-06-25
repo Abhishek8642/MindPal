@@ -43,15 +43,20 @@ export function Settings() {
           throw error;
         }
 
-        if (data) {
-          setProfile({
-            fullName: data.full_name || '',
-            phone: '', // Phone not in profiles table yet
-            timezone: data.timezone || 'UTC',
-          });
-        }
+        // Handle both successful data and no profile case
+        setProfile({
+          fullName: data?.full_name || '',
+          phone: '', // Phone not in profiles table yet
+          timezone: data?.timezone || 'UTC',
+        });
       } catch (error) {
         console.error('Error loading profile:', error);
+        // Set default values on error
+        setProfile({
+          fullName: '',
+          phone: '',
+          timezone: 'UTC',
+        });
       }
     };
 
