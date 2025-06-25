@@ -14,7 +14,7 @@ interface Notification {
 }
 
 export function useNotifications() {
-  const { user } = useAuth();
+  const { user, handleSupabaseError } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [permission, setPermission] = useState<NotificationPermission>('default');
 
@@ -78,7 +78,11 @@ export function useNotifications() {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        const isJWTError = await handleSupabaseError(error);
+        if (!isJWTError) throw error;
+        return;
+      }
 
       setNotifications(prev => [...prev, data]);
       
@@ -170,12 +174,17 @@ export function useNotifications() {
         .eq('user_id', user.id)
         .order('scheduled_for', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        const isJWTError = await handleSupabaseError(error);
+        if (!isJWTError) throw error;
+        return;
+      }
+
       setNotifications(data || []);
     } catch (error) {
       console.error('Error loading notifications:', error);
     }
-  }, [user]);
+  }, [user, handleSupabaseError]);
 
   const deleteNotification = async (notificationId: string) => {
     try {
@@ -184,7 +193,11 @@ export function useNotifications() {
         .delete()
         .eq('id', notificationId);
 
-      if (error) throw error;
+      if (error) {
+        const isJWTError = await handleSupabaseError(error);
+        if (!isJWTError) throw error;
+        return;
+      }
 
       setNotifications(prev => prev.filter(n => n.id !== notificationId));
       toast.success('Notification deleted');

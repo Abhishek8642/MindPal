@@ -29,7 +29,7 @@ interface MoodAnalysis {
 }
 
 export function useChatSessions() {
-  const { user } = useAuth();
+  const { user, handleSupabaseError } = useAuth();
   const { storeEncryptedData } = useEncryption();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null);
@@ -46,7 +46,12 @@ export function useChatSessions() {
         .eq('user_id', user.id)
         .order('updated_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        const isJWTError = await handleSupabaseError(error);
+        if (!isJWTError) throw error;
+        return;
+      }
+
       setSessions(data || []);
     } catch (error) {
       console.error('Error loading chat sessions:', error);
@@ -54,7 +59,7 @@ export function useChatSessions() {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, handleSupabaseError]);
 
   const loadMessages = useCallback(async (sessionId: string) => {
     if (!user) return;
@@ -67,13 +72,18 @@ export function useChatSessions() {
         .eq('user_id', user.id)
         .order('created_at', { ascending: true });
 
-      if (error) throw error;
+      if (error) {
+        const isJWTError = await handleSupabaseError(error);
+        if (!isJWTError) throw error;
+        return;
+      }
+
       setMessages(data || []);
     } catch (error) {
       console.error('Error loading messages:', error);
       toast.error('Failed to load messages');
     }
-  }, [user]);
+  }, [user, handleSupabaseError]);
 
   const createNewSession = async (title?: string) => {
     if (!user) return null;
@@ -88,7 +98,11 @@ export function useChatSessions() {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        const isJWTError = await handleSupabaseError(error);
+        if (!isJWTError) throw error;
+        return null;
+      }
 
       const newSession = data;
       setSessions(prev => [newSession, ...prev]);
@@ -119,7 +133,11 @@ export function useChatSessions() {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        const isJWTError = await handleSupabaseError(error);
+        if (!isJWTError) throw error;
+        return null;
+      }
 
       const newMessage = data;
       setMessages(prev => [...prev, newMessage]);
@@ -147,7 +165,11 @@ export function useChatSessions() {
         .eq('id', sessionId)
         .eq('user_id', user.id);
 
-      if (error) throw error;
+      if (error) {
+        const isJWTError = await handleSupabaseError(error);
+        if (!isJWTError) throw error;
+        return;
+      }
 
       setSessions(prev => prev.filter(s => s.id !== sessionId));
       
@@ -173,7 +195,11 @@ export function useChatSessions() {
         .eq('id', sessionId)
         .eq('user_id', user.id);
 
-      if (error) throw error;
+      if (error) {
+        const isJWTError = await handleSupabaseError(error);
+        if (!isJWTError) throw error;
+        return;
+      }
 
       setSessions(prev => prev.map(s => 
         s.id === sessionId ? { ...s, title } : s
@@ -201,7 +227,11 @@ export function useChatSessions() {
         .eq('session_id', sessionId)
         .eq('user_id', user.id);
 
-      if (error) throw error;
+      if (error) {
+        const isJWTError = await handleSupabaseError(error);
+        if (!isJWTError) throw error;
+        return null;
+      }
 
       const userMessages = messagesData?.filter(m => m.message_type === 'user') || [];
       const conversationText = userMessages.map(m => m.content).join(' ');
@@ -219,7 +249,11 @@ export function useChatSessions() {
           analysis_data: analysis,
         }]);
 
-      if (analyticsError) throw analyticsError;
+      if (analyticsError) {
+        const isJWTError = await handleSupabaseError(analyticsError);
+        if (!isJWTError) throw analyticsError;
+        return null;
+      }
 
       toast.success('Mood report generated!');
       return analysis;

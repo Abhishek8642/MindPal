@@ -2,7 +2,7 @@ import { useAuth } from './useAuth';
 import { supabase } from '../lib/supabase';
 
 export function useEncryption() {
-  const { user } = useAuth();
+  const { user, handleSupabaseError } = useAuth();
 
   const encryptData = async (data: string): Promise<string> => {
     // Simple encryption using Web Crypto API
@@ -106,7 +106,11 @@ export function useEncryption() {
           encrypted_content: encryptedContent,
         }]);
 
-      if (error) throw error;
+      if (error) {
+        const isJWTError = await handleSupabaseError(error);
+        if (!isJWTError) throw error;
+        return;
+      }
     } catch (error) {
       console.error('Error storing encrypted data:', error);
       throw error;
@@ -123,7 +127,11 @@ export function useEncryption() {
         .eq('user_id', user.id)
         .eq('data_type', dataType);
 
-      if (error) throw error;
+      if (error) {
+        const isJWTError = await handleSupabaseError(error);
+        if (!isJWTError) return [];
+        throw error;
+      }
 
       const decryptedData = await Promise.all(
         (data || []).map(item => decryptData(item.encrypted_content))

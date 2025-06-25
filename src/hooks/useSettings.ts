@@ -32,7 +32,7 @@ const defaultSettings: UserSettings = {
 };
 
 export function useSettings() {
-  const { user } = useAuth();
+  const { user, handleSupabaseError } = useAuth();
   const [settings, setSettings] = useState<UserSettings>(defaultSettings);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -51,7 +51,9 @@ export function useSettings() {
         .maybeSingle();
 
       if (error) {
-        throw error;
+        const isJWTError = await handleSupabaseError(error);
+        if (!isJWTError) throw error;
+        return;
       }
 
       if (data) {
@@ -80,7 +82,7 @@ export function useSettings() {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, handleSupabaseError]);
 
   const createDefaultSettings = async () => {
     if (!user) return;
@@ -96,7 +98,11 @@ export function useSettings() {
           onConflict: 'user_id'
         });
 
-      if (error) throw error;
+      if (error) {
+        const isJWTError = await handleSupabaseError(error);
+        if (!isJWTError) throw error;
+        return;
+      }
       
       setSettings(defaultSettings);
       applyTheme(defaultSettings.theme);
@@ -128,7 +134,11 @@ export function useSettings() {
           onConflict: 'user_id'
         });
 
-      if (error) throw error;
+      if (error) {
+        const isJWTError = await handleSupabaseError(error);
+        if (!isJWTError) throw error;
+        return;
+      }
 
       setSettings(updatedSettings);
       

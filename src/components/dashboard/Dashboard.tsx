@@ -20,7 +20,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
 export function Dashboard() {
-  const { user } = useAuth();
+  const { user, handleSupabaseError } = useAuth();
   const navigate = useNavigate();
   const { 
     scheduleMoodReminder, 
@@ -40,14 +40,20 @@ export function Dashboard() {
 
     try {
       // Get task stats
-      const { data: taskData } = await supabase
+      const { data: taskData, error: taskError } = await supabase
         .from('tasks')
         .select('completed')
         .eq('user_id', user.id);
 
+      if (taskError) {
+        const isJWTError = await handleSupabaseError(taskError);
+        if (!isJWTError) throw taskError;
+        return;
+      }
+
       // Get today's mood
       const today = new Date().toISOString().split('T')[0];
-      const { data: moodData } = await supabase
+      const { data: moodData, error: moodError } = await supabase
         .from('mood_entries')
         .select('mood')
         .eq('user_id', user.id)
@@ -55,11 +61,23 @@ export function Dashboard() {
         .order('created_at', { ascending: false })
         .limit(1);
 
+      if (moodError) {
+        const isJWTError = await handleSupabaseError(moodError);
+        if (!isJWTError) throw moodError;
+        return;
+      }
+
       // Get voice sessions count
-      const { data: voiceData } = await supabase
+      const { data: voiceData, error: voiceError } = await supabase
         .from('chat_sessions')
         .select('id')
         .eq('user_id', user.id);
+
+      if (voiceError) {
+        const isJWTError = await handleSupabaseError(voiceError);
+        if (!isJWTError) throw voiceError;
+        return;
+      }
 
       setStats({
         totalTasks: taskData?.length || 0,
@@ -69,8 +87,9 @@ export function Dashboard() {
       });
     } catch (error) {
       console.error('Error loading stats:', error);
+      toast.error('Failed to load dashboard stats');
     }
-  }, [user]);
+  }, [user, handleSupabaseError]);
 
   useEffect(() => {
     if (user) {
