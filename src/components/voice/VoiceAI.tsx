@@ -145,7 +145,37 @@ export function VoiceAI() {
 
     recognition.onerror = (event) => {
       console.error('Speech recognition error:', event.error);
-      toast.error('Speech recognition failed');
+      
+      // Provide specific error messages based on error type
+      let errorMessage = 'Speech recognition failed';
+      
+      switch (event.error) {
+        case 'network':
+          errorMessage = 'Network error: Please check your internet connection and try again';
+          break;
+        case 'not-allowed':
+          errorMessage = 'Microphone access denied. Please allow microphone permissions and try again';
+          break;
+        case 'no-speech':
+          errorMessage = 'No speech detected. Please speak clearly and try again';
+          break;
+        case 'audio-capture':
+          errorMessage = 'Microphone not found or not working. Please check your microphone';
+          break;
+        case 'service-not-allowed':
+          errorMessage = 'Speech recognition service not available. Please try again later';
+          break;
+        case 'bad-grammar':
+          errorMessage = 'Speech recognition grammar error. Please try speaking again';
+          break;
+        case 'language-not-supported':
+          errorMessage = 'Language not supported by speech recognition';
+          break;
+        default:
+          errorMessage = `Speech recognition error: ${event.error}`;
+      }
+      
+      toast.error(errorMessage);
       setIsListening(false);
     };
 
