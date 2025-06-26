@@ -10,9 +10,12 @@ import {
   Award,
   ExternalLink,
   Plus,
-  Bell
+  Bell,
+  WifiOff,
+  AlertTriangle
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
+import { useNetworkStatus } from '../../hooks/useNetworkStatus';
 import { useNotifications } from '../../hooks/useNotifications';
 import { supabase } from '../../lib/supabase';
 import { format } from 'date-fns';
@@ -21,6 +24,7 @@ import toast from 'react-hot-toast';
 
 export function Dashboard() {
   const { user, handleSupabaseError } = useAuth();
+  const { isOnline, isConnectedToSupabase, withRetry } = useNetworkStatus();
   const navigate = useNavigate();
   const { 
     scheduleMoodReminder, 
@@ -34,50 +38,72 @@ export function Dashboard() {
     todayMood: null as number | null,
     voiceSessions: 0,
   });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const loadStats = useCallback(async () => {
     if (!user) return;
 
+    if (!isConnectedToSupabase) {
+      setLoading(false);
+      setError('No connection to server');
+      return;
+    }
+
     try {
-      // Get task stats
-      const { data: taskData, error: taskError } = await supabase
-        .from('tasks')
-        .select('completed')
-        .eq('user_id', user.id);
+      setError(null);
+      
+      // Get task stats with retry
+      const taskData = await withRetry(async () => {
+        const { data, error } = await supabase
+          .from('tasks')
+          .select('completed')
+          .eq('user_id', user.id);
 
-      if (taskError) {
-        const isJWTError = await handleSupabaseError(taskError);
-        if (!isJWTError) throw taskError;
-        return;
-      }
+        if (error) {
+          const isJWTError = await handleSupabaseError(error);
+          if (!isJWTError) throw error;
+          return null;
+        }
 
-      // Get today's mood
+        return data;
+      });
+
+      // Get today's mood with retry
       const today = new Date().toISOString().split('T')[0];
-      const { data: moodData, error: moodError } = await supabase
-        .from('mood_entries')
-        .select('mood')
-        .eq('user_id', user.id)
-        .gte('created_at', today)
-        .order('created_at', { ascending: false })
-        .limit(1);
+      const moodData = await withRetry(async () => {
+        const { data, error } = await supabase
+          .from('mood_entries')
+          .select('mood')
+          .eq('user_id', user.id)
+          .gte('created_at', today)
+          .order('created_at', { ascending: false })
+          .limit(1);
 
-      if (moodError) {
-        const isJWTError = await handleSupabaseError(moodError);
-        if (!isJWTError) throw moodError;
-        return;
-      }
+        if (error) {
+          const isJWTError = await handleSupabaseError(error);
+          if (!isJWTError) throw error;
+          return null;
+        }
 
-      // Get voice sessions count
-      const { data: voiceData, error: voiceError } = await supabase
-        .from('chat_sessions')
-        .select('id')
-        .eq('user_id', user.id);
+        return data;
+      });
 
-      if (voiceError) {
-        const isJWTError = await handleSupabaseError(voiceError);
-        if (!isJWTError) throw voiceError;
-        return;
-      }
+      // Get voice sessions count with retry
+      const voiceData = await withRetry(async () => {
+        const { data, error } = await supabase
+          .from('chat_sessions')
+          .select('id')
+          .eq('user_id', user.id);
+
+        if (error) {
+          const isJWTError = await handleSupabaseError(error);
+          if (!isJWTError) throw error;
+          return null;
+        }
+
+        return data;
+      });
 
       setStats({
         totalTasks: taskData?.length || 0,
@@ -87,9 +113,14 @@ export function Dashboard() {
       });
     } catch (error) {
       console.error('Error loading stats:', error);
-      toast.error('Failed to load dashboard stats');
+      setError('Failed to load dashboard data');
+      if (isConnectedToSupabase) {
+        toast.error('Failed to load dashboard stats');
+      }
+    } finally {
+      setLoading(false);
     }
-  }, [user, handleSupabaseError]);
+  }, [user, handleSupabaseError, withRetry, isConnectedToSupabase]);
 
   useEffect(() => {
     if (user) {
@@ -98,6 +129,8 @@ export function Dashboard() {
       if (permission === 'default') {
         requestNotificationPermission();
       }
+    } else {
+      setLoading(false);
     }
   }, [user, loadStats, permission, requestNotificationPermission]);
 
@@ -114,13 +147,25 @@ export function Dashboard() {
           navigate('/tasks');
           break;
         case 'schedule-mood-reminder':
+          if (!isConnectedToSupabase) {
+            toast.error('Cannot schedule reminder - no connection to server');
+            return;
+          }
           await scheduleMoodReminder();
           break;
         case 'schedule-daily-summary':
+          if (!isConnectedToSupabase) {
+            toast.error('Cannot schedule summary - no connection to server');
+            return;
+          }
           await scheduleDailySummary();
           break;
         case 'enable-notifications':
           await requestNotificationPermission();
+          break;
+        case 'retry-connection':
+          setLoading(true);
+          await loadStats();
           break;
         default:
           break;
@@ -172,6 +217,25 @@ export function Dashboard() {
     },
   ];
 
+  if (loading) {
+    return (
+      <div className="space-y-8">
+        <div className="text-center">
+          <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
+            Welcome back, {user?.email?.split('@')[0]}!
+          </h1>
+          <p className="text-gray-600 dark:text-gray-300 text-lg">
+            {format(new Date(), 'EEEE, MMMM do, yyyy')}
+          </p>
+        </div>
+        
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       {/* Welcome Header */}
@@ -189,8 +253,39 @@ export function Dashboard() {
         </p>
       </motion.div>
 
+      {/* Connection Error Banner */}
+      {error && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              {!isOnline ? (
+                <WifiOff className="h-5 w-5 text-red-600 dark:text-red-400" />
+              ) : (
+                <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+              )}
+              <div>
+                <p className="font-medium text-red-800 dark:text-red-300">Connection Issues</p>
+                <p className="text-sm text-red-700 dark:text-red-400">
+                  {error} - Some features may not work properly
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => handleQuickAction('retry-connection')}
+              className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors duration-200"
+            >
+              Retry
+            </button>
+          </div>
+        </motion.div>
+      )}
+
       {/* Notification Permission Banner */}
-      {permission !== 'granted' && (
+      {permission !== 'granted' && !error && (
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -226,7 +321,9 @@ export function Dashboard() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: index * 0.1 }}
-              className={`${card.bgColor} rounded-2xl p-6 hover:shadow-lg transition-all duration-300 cursor-pointer transform hover:-translate-y-1`}
+              className={`${card.bgColor} rounded-2xl p-6 hover:shadow-lg transition-all duration-300 cursor-pointer transform hover:-translate-y-1 ${
+                error ? 'opacity-75' : ''
+              }`}
             >
               <div className="flex items-center justify-between mb-4">
                 <div className={`bg-gradient-to-r ${card.color} p-3 rounded-xl`}>
@@ -292,33 +389,35 @@ export function Dashboard() {
         </div>
 
         {/* Notification Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => handleQuickAction('schedule-mood-reminder')}
-            className="bg-gradient-to-r from-blue-500 to-cyan-600 text-white p-4 rounded-xl hover:shadow-lg transition-all duration-200 text-left flex items-center space-x-3"
-          >
-            <Plus className="h-6 w-6" />
-            <div>
-              <h3 className="font-semibold">Schedule Mood Reminder</h3>
-              <p className="text-sm opacity-90">Get reminded to check your mood tomorrow</p>
-            </div>
-          </motion.button>
+        {isConnectedToSupabase && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => handleQuickAction('schedule-mood-reminder')}
+              className="bg-gradient-to-r from-blue-500 to-cyan-600 text-white p-4 rounded-xl hover:shadow-lg transition-all duration-200 text-left flex items-center space-x-3"
+            >
+              <Plus className="h-6 w-6" />
+              <div>
+                <h3 className="font-semibold">Schedule Mood Reminder</h3>
+                <p className="text-sm opacity-90">Get reminded to check your mood tomorrow</p>
+              </div>
+            </motion.button>
 
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => handleQuickAction('schedule-daily-summary')}
-            className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white p-4 rounded-xl hover:shadow-lg transition-all duration-200 text-left flex items-center space-x-3"
-          >
-            <Plus className="h-6 w-6" />
-            <div>
-              <h3 className="font-semibold">Schedule Daily Summary</h3>
-              <p className="text-sm opacity-90">Get your end-of-day report tonight</p>
-            </div>
-          </motion.button>
-        </div>
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => handleQuickAction('schedule-daily-summary')}
+              className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white p-4 rounded-xl hover:shadow-lg transition-all duration-200 text-left flex items-center space-x-3"
+            >
+              <Plus className="h-6 w-6" />
+              <div>
+                <h3 className="font-semibold">Schedule Daily Summary</h3>
+                <p className="text-sm opacity-90">Get your end-of-day report tonight</p>
+              </div>
+            </motion.button>
+          </div>
+        )}
       </motion.div>
 
       {/* Built on Bolt Badge */}

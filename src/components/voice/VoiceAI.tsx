@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Brain, 
@@ -13,11 +13,15 @@ import {
   Edit3,
   MessageCircle,
   WifiOff,
-  AlertTriangle
+  AlertTriangle,
+  Volume2,
+  VolumeX,
+  Headphones
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useSettings } from '../../hooks/useSettings';
 import { useNetworkStatus } from '../../hooks/useNetworkStatus';
+import { useVoice } from '../../hooks/useVoice';
 import { useChatSessions } from '../../hooks/useChatSessions';
 import toast from 'react-hot-toast';
 
@@ -127,6 +131,15 @@ export function VoiceAI() {
   const { settings } = useSettings();
   const { isOnline, isConnectedToSupabase } = useNetworkStatus();
   const {
+    textToSpeech,
+    stopSpeech,
+    speechToSpeech,
+    isPlaying,
+    isRecording,
+    cleanup,
+    isVoiceEnabled,
+  } = useVoice();
+  const {
     sessions,
     currentSession,
     messages,
@@ -140,17 +153,24 @@ export function VoiceAI() {
   } = useChatSessions();
 
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isListening, setIsListening] = useState(false);
   const [textInput, setTextInput] = useState('');
   const [showSessions, setShowSessions] = useState(false);
   const [editingTitle, setEditingTitle] = useState<string | null>(null);
   const [moodReport, setMoodReport] = useState<any>(null);
+  const [autoSpeak, setAutoSpeak] = useState(true);
 
   const isSpeechRecognitionSupported = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
-  const canUseVoice = isOnline && isSpeechRecognitionSupported;
+  const canUseVoice = isOnline && isSpeechRecognitionSupported && isVoiceEnabled;
   const canUseAI = isOnline && isConnectedToSupabase;
 
-  const processChatInput = async (input: string) => {
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cleanup();
+    };
+  }, [cleanup]);
+
+  const processChatInput = async (input: string, shouldSpeak: boolean = false) => {
     if (!input.trim() || !user) return;
     
     if (!canUseAI) {
@@ -184,6 +204,11 @@ export function VoiceAI() {
       // Add AI response
       await addMessage(sessionToUse.id, 'ai', aiResponse);
       
+      // Speak the AI response if auto-speak is enabled or explicitly requested
+      if ((autoSpeak || shouldSpeak) && isVoiceEnabled) {
+        await textToSpeech(aiResponse);
+      }
+      
       toast.success('AI response generated!');
     } catch (error) {
       console.error('Error processing chat input:', error);
@@ -194,75 +219,27 @@ export function VoiceAI() {
     }
   };
 
-  const startVoiceRecognition = () => {
+  const handleVoiceInput = async () => {
     if (!canUseVoice) {
       if (!isOnline) {
-        toast.error('Voice recognition requires an internet connection');
+        toast.error('Voice features require an internet connection');
       } else if (!isSpeechRecognitionSupported) {
         toast.error('Speech recognition not supported in this browser');
+      } else if (!isVoiceEnabled) {
+        toast.error('ElevenLabs API key not configured');
       }
       return;
     }
 
-    const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
-    const recognition = new SpeechRecognition();
-    
-    recognition.continuous = false;
-    recognition.interimResults = false;
-    recognition.lang = 'en-US';
-
-    recognition.onstart = () => {
-      setIsListening(true);
-      toast.success('Listening... Speak now!');
-    };
-
-    recognition.onresult = (event) => {
-      const transcript = event.results[0][0].transcript;
-      setTextInput(transcript);
-      processChatInput(transcript);
-    };
-
-    recognition.onerror = (event) => {
-      console.error('Speech recognition error:', event.error);
-      
-      // Provide specific error messages based on error type
-      let errorMessage = 'Speech recognition failed';
-      
-      switch (event.error) {
-        case 'network':
-          errorMessage = 'Network error: Please check your internet connection and try again';
-          break;
-        case 'not-allowed':
-          errorMessage = 'Microphone access denied. Please allow microphone permissions and try again';
-          break;
-        case 'no-speech':
-          errorMessage = 'No speech detected. Please speak clearly and try again';
-          break;
-        case 'audio-capture':
-          errorMessage = 'Microphone not found or not working. Please check your microphone';
-          break;
-        case 'service-not-allowed':
-          errorMessage = 'Speech recognition service not available. Please try again later';
-          break;
-        case 'bad-grammar':
-          errorMessage = 'Speech recognition grammar error. Please try speaking again';
-          break;
-        case 'language-not-supported':
-          errorMessage = 'Language not supported by speech recognition';
-          break;
-        default:
-          errorMessage = `Speech recognition error: ${event.error}`;
+    try {
+      const transcript = await speechToSpeech();
+      if (transcript.trim()) {
+        await processChatInput(transcript, true); // Auto-speak response for voice input
       }
-      
-      toast.error(errorMessage);
-      setIsListening(false);
-    };
-
-    recognition.onend = () => {
-      setIsListening(false);
-    };
-
-    recognition.start();
+    } catch (error) {
+      console.error('Voice input error:', error);
+      toast.error(error instanceof Error ? error.message : 'Voice input failed');
+    }
   };
 
   const handleTextSubmit = (e: React.FormEvent) => {
@@ -342,6 +319,19 @@ export function VoiceAI() {
     }
   };
 
+  const handleSpeakMessage = async (content: string) => {
+    if (!isVoiceEnabled) {
+      toast.error('Text-to-speech not available');
+      return;
+    }
+
+    if (isPlaying) {
+      stopSpeech();
+    } else {
+      await textToSpeech(content);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -354,6 +344,28 @@ export function VoiceAI() {
         </div>
         
         <div className="flex items-center space-x-3">
+          {/* Voice Settings */}
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setAutoSpeak(!autoSpeak)}
+              className={`p-2 rounded-lg transition-colors duration-200 ${
+                autoSpeak 
+                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' 
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+              }`}
+              title={autoSpeak ? 'Auto-speak enabled' : 'Auto-speak disabled'}
+            >
+              {autoSpeak ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+            </button>
+            
+            {isVoiceEnabled && (
+              <div className="flex items-center space-x-1 text-xs text-green-600 dark:text-green-400">
+                <Headphones className="h-3 w-3" />
+                <span>Voice Ready</span>
+              </div>
+            )}
+          </div>
+          
           <button
             onClick={() => setShowSessions(!showSessions)}
             disabled={!canUseAI}
@@ -375,7 +387,7 @@ export function VoiceAI() {
       </div>
 
       {/* Connection Status Warning */}
-      {(!isOnline || !isConnectedToSupabase) && (
+      {(!isOnline || !isConnectedToSupabase || !isVoiceEnabled) && (
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -389,12 +401,16 @@ export function VoiceAI() {
             )}
             <div>
               <p className="font-medium text-yellow-800 dark:text-yellow-300">
-                {!isOnline ? 'No Internet Connection' : 'Server Connection Issues'}
+                {!isOnline ? 'No Internet Connection' : 
+                 !isConnectedToSupabase ? 'Server Connection Issues' : 
+                 'Voice Features Limited'}
               </p>
               <p className="text-sm text-yellow-700 dark:text-yellow-400">
                 {!isOnline 
                   ? 'Voice recognition and AI chat are unavailable without internet access.'
-                  : 'AI chat and data sync may not work properly. Please check your connection.'
+                  : !isConnectedToSupabase
+                  ? 'AI chat and data sync may not work properly. Please check your connection.'
+                  : 'ElevenLabs API key not configured. Text-to-speech features unavailable.'
                 }
               </p>
             </div>
@@ -525,7 +541,18 @@ export function VoiceAI() {
                     {message.message_type === 'ai' && (
                       <Brain className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
                     )}
-                    <p className="text-sm">{message.content}</p>
+                    <div className="flex-1">
+                      <p className="text-sm">{message.content}</p>
+                      {message.message_type === 'ai' && isVoiceEnabled && (
+                        <button
+                          onClick={() => handleSpeakMessage(message.content)}
+                          className="mt-2 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors duration-200 flex items-center space-x-1"
+                        >
+                          {isPlaying ? <VolumeX className="h-3 w-3" /> : <Volume2 className="h-3 w-3" />}
+                          <span>{isPlaying ? 'Stop' : 'Speak'}</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -552,12 +579,12 @@ export function VoiceAI() {
                 onChange={(e) => setTextInput(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl border border-purple-200 dark:border-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white dark:bg-gray-800 text-gray-900 dark:text-white disabled:opacity-50"
                 placeholder={canUseAI ? "Type your message..." : "Connection required for messaging"}
-                disabled={isProcessing || isListening || !canUseAI}
+                disabled={isProcessing || isRecording || !canUseAI}
               />
               <button
                 type="submit"
                 className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-3 rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={isProcessing || !textInput.trim() || isListening || !canUseAI}
+                disabled={isProcessing || !textInput.trim() || isRecording || !canUseAI}
                 title="Send"
               >
                 <Send className="h-5 w-5" />
@@ -566,17 +593,17 @@ export function VoiceAI() {
 
             <div className="flex items-center space-x-2">
               <button
-                onClick={startVoiceRecognition}
+                onClick={handleVoiceInput}
                 disabled={isProcessing || !canUseVoice}
                 className={`px-4 py-3 rounded-xl font-medium transition-all duration-200 flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-                  isListening
+                  isRecording
                     ? 'bg-red-600 hover:bg-red-700 text-white recording-pulse'
                     : 'bg-blue-600 hover:bg-blue-700 text-white'
                 }`}
-                title={!canUseVoice ? 'Voice recognition requires internet connection' : 'Start voice recognition'}
+                title={!canUseVoice ? 'Voice features require internet connection and API key' : 'Start voice conversation'}
               >
-                {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-                <span className="hidden sm:inline">{isListening ? 'Listening...' : 'Voice'}</span>
+                {isRecording ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                <span className="hidden sm:inline">{isRecording ? 'Listening...' : 'Voice'}</span>
               </button>
               
               {currentSession && messages.length > 0 && (
@@ -719,7 +746,7 @@ export function VoiceAI() {
           className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4"
         >
           <p className="text-sm text-blue-800 dark:text-blue-300">
-            🔒 Your conversations are encrypted and stored securely. AI remembers context within each chat session. You can disable voice recording storage in Settings.
+            🔒 Your conversations are encrypted and stored securely. AI remembers context within each chat session. Voice synthesis powered by ElevenLabs. You can disable voice recording storage in Settings.
           </p>
         </motion.div>
       )}
