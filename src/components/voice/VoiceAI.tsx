@@ -11,7 +11,9 @@ import {
   Share2,
   FileText,
   Edit3,
-  MessageCircle
+  MessageCircle,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { useSettings } from '../../hooks/useSettings';
@@ -126,6 +128,7 @@ export function VoiceAI() {
     sessions,
     currentSession,
     messages,
+    networkError,
     setCurrentSession,
     loadMessages,
     createNewSession,
@@ -141,6 +144,7 @@ export function VoiceAI() {
   const [showSessions, setShowSessions] = useState(false);
   const [editingTitle, setEditingTitle] = useState<string | null>(null);
   const [moodReport, setMoodReport] = useState<any>(null);
+  const [speechRecognitionSupported, setSpeechRecognitionSupported] = useState(true);
 
   const processChatInput = async (input: string) => {
     if (!input.trim() || !user) return;
@@ -182,8 +186,16 @@ export function VoiceAI() {
   };
 
   const startVoiceRecognition = () => {
+    // Check if speech recognition is supported
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      toast.error('Speech recognition not supported in this browser');
+      setSpeechRecognitionSupported(false);
+      toast.error('Speech recognition is not supported in this browser. Please try using Chrome, Edge, or Safari.');
+      return;
+    }
+
+    // Check network connectivity
+    if (!navigator.onLine) {
+      toast.error('No internet connection. Speech recognition requires an active internet connection.');
       return;
     }
 
@@ -207,45 +219,69 @@ export function VoiceAI() {
 
     recognition.onerror = (event) => {
       console.error('Speech recognition error:', event.error);
+      setIsListening(false);
       
       // Provide specific error messages based on error type
       let errorMessage = 'Speech recognition failed';
+      let shouldRetry = false;
       
       switch (event.error) {
         case 'network':
-          errorMessage = 'Network error: Please check your internet connection and try again';
+          errorMessage = 'Network error: Please check your internet connection and try again. Speech recognition requires a stable internet connection.';
+          shouldRetry = true;
           break;
         case 'not-allowed':
-          errorMessage = 'Microphone access denied. Please allow microphone permissions and try again';
+          errorMessage = 'Microphone access denied. Please allow microphone permissions in your browser settings and try again.';
           break;
         case 'no-speech':
-          errorMessage = 'No speech detected. Please speak clearly and try again';
+          errorMessage = 'No speech detected. Please speak clearly and try again.';
+          shouldRetry = true;
           break;
         case 'audio-capture':
-          errorMessage = 'Microphone not found or not working. Please check your microphone';
+          errorMessage = 'Microphone not found or not working. Please check your microphone and try again.';
           break;
         case 'service-not-allowed':
-          errorMessage = 'Speech recognition service not available. Please try again later';
+          errorMessage = 'Speech recognition service not available. This may be due to network restrictions or browser settings.';
           break;
         case 'bad-grammar':
-          errorMessage = 'Speech recognition grammar error. Please try speaking again';
+          errorMessage = 'Speech recognition grammar error. Please try speaking again.';
+          shouldRetry = true;
           break;
         case 'language-not-supported':
-          errorMessage = 'Language not supported by speech recognition';
+          errorMessage = 'Language not supported by speech recognition. Currently only English is supported.';
+          break;
+        case 'aborted':
+          errorMessage = 'Speech recognition was cancelled.';
           break;
         default:
-          errorMessage = `Speech recognition error: ${event.error}`;
+          errorMessage = `Speech recognition error: ${event.error}. Please try again.`;
+          shouldRetry = true;
       }
       
       toast.error(errorMessage);
-      setIsListening(false);
+      
+      // Offer retry for certain errors
+      if (shouldRetry && event.error === 'network') {
+        setTimeout(() => {
+          toast('You can try voice recognition again when your connection is stable.', {
+            icon: '🔄',
+            duration: 4000,
+          });
+        }, 2000);
+      }
     };
 
     recognition.onend = () => {
       setIsListening(false);
     };
 
-    recognition.start();
+    try {
+      recognition.start();
+    } catch (error) {
+      console.error('Failed to start speech recognition:', error);
+      setIsListening(false);
+      toast.error('Failed to start speech recognition. Please try again.');
+    }
   };
 
   const handleTextSubmit = (e: React.FormEvent) => {
@@ -279,7 +315,11 @@ export function VoiceAI() {
       toast.success('AI report generated successfully!');
     } catch (error) {
       console.error('Error generating report:', error);
-      toast.error('Failed to generate report');
+      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+        toast.error('Unable to generate report. Please check your internet connection.');
+      } else {
+        toast.error('Failed to generate report');
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -322,6 +362,22 @@ export function VoiceAI() {
 
   return (
     <div className="space-y-6">
+      {/* Network Status Banner */}
+      {networkError && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4"
+        >
+          <div className="flex items-center space-x-2">
+            <WifiOff className="h-5 w-5 text-red-600 dark:text-red-400" />
+            <p className="text-red-800 dark:text-red-300">
+              Connection issues detected. Some features may not work properly. Please check your internet connection.
+            </p>
+          </div>
+        </motion.div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -342,7 +398,8 @@ export function VoiceAI() {
           
           <button
             onClick={handleNewChat}
-            className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-2 rounded-xl hover:shadow-lg transition-all duration-200 flex items-center space-x-2"
+            disabled={networkError}
+            className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-2 rounded-xl hover:shadow-lg transition-all duration-200 flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus className="h-4 w-4" />
             <span>New Chat</span>
@@ -495,12 +552,12 @@ export function VoiceAI() {
                 onChange={(e) => setTextInput(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl border border-purple-200 dark:border-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-400 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 placeholder="Type your message..."
-                disabled={isProcessing || isListening}
+                disabled={isProcessing || isListening || networkError}
               />
               <button
                 type="submit"
                 className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-3 rounded-xl transition-all duration-200 disabled:opacity-50"
-                disabled={isProcessing || !textInput.trim() || isListening}
+                disabled={isProcessing || !textInput.trim() || isListening || networkError}
                 title="Send"
               >
                 <Send className="h-5 w-5" />
@@ -510,12 +567,21 @@ export function VoiceAI() {
             <div className="flex items-center space-x-2">
               <button
                 onClick={startVoiceRecognition}
-                className={`px-4 py-3 rounded-xl font-medium transition-all duration-200 flex items-center space-x-2 ${
+                className={`px-4 py-3 rounded-xl font-medium transition-all duration-200 flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed ${
                   isListening
                     ? 'bg-red-600 hover:bg-red-700 text-white recording-pulse'
                     : 'bg-blue-600 hover:bg-blue-700 text-white'
                 }`}
-                disabled={isProcessing}
+                disabled={isProcessing || networkError || !speechRecognitionSupported}
+                title={
+                  !speechRecognitionSupported 
+                    ? 'Speech recognition not supported in this browser'
+                    : networkError 
+                    ? 'Voice recognition requires internet connection'
+                    : isListening 
+                    ? 'Stop listening' 
+                    : 'Start voice recognition'
+                }
               >
                 {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
                 <span className="hidden sm:inline">{isListening ? 'Listening...' : 'Voice'}</span>
@@ -524,7 +590,7 @@ export function VoiceAI() {
               {currentSession && messages.length > 0 && (
                 <button
                   onClick={handleGenerateReport}
-                  disabled={isProcessing}
+                  disabled={isProcessing || networkError}
                   className="bg-green-600 hover:bg-green-700 text-white px-4 py-3 rounded-xl transition-all duration-200 flex items-center space-x-2 disabled:opacity-50"
                   title="Generate AI mood report"
                 >
@@ -665,6 +731,21 @@ export function VoiceAI() {
           </p>
         </motion.div>
       )}
+
+      {/* Connection Status */}
+      <div className="flex items-center justify-center space-x-2 text-sm text-gray-500 dark:text-gray-400">
+        {navigator.onLine ? (
+          <>
+            <Wifi className="h-4 w-4 text-green-500" />
+            <span>Connected</span>
+          </>
+        ) : (
+          <>
+            <WifiOff className="h-4 w-4 text-red-500" />
+            <span>Offline</span>
+          </>
+        )}
+      </div>
     </div>
   );
 }
