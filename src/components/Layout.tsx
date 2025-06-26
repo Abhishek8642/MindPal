@@ -1,6 +1,6 @@
 import React from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Brain, 
   Home, 
@@ -8,13 +8,18 @@ import {
   Heart, 
   Mic, 
   Settings,
-  LogOut
+  LogOut,
+  Wifi,
+  WifiOff,
+  RefreshCw
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import toast from 'react-hot-toast';
 
 export function Layout() {
   const { user, signOut } = useAuth();
+  const { isOnline, isConnectedToSupabase, retryConnection } = useNetworkStatus();
   const location = useLocation();
 
   const handleSignOut = async () => {
@@ -26,6 +31,17 @@ export function Layout() {
     }
   };
 
+  const handleRetryConnection = async () => {
+    toast.loading('Checking connection...', { id: 'retry-connection' });
+    const status = await retryConnection();
+    
+    if (status.isOnline && status.isConnectedToSupabase) {
+      toast.success('Connection restored!', { id: 'retry-connection' });
+    } else {
+      toast.error('Still having connection issues', { id: 'retry-connection' });
+    }
+  };
+
   const navItems = [
     { icon: Home, label: 'Dashboard', path: '/dashboard' },
     { icon: CheckSquare, label: 'Tasks', path: '/tasks' },
@@ -34,10 +50,49 @@ export function Layout() {
     { icon: Settings, label: 'Settings', path: '/settings' },
   ];
 
+  const showNetworkBanner = !isOnline || !isConnectedToSupabase;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50">
+      {/* Network Status Banner */}
+      <AnimatePresence>
+        {showNetworkBanner && (
+          <motion.div
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -50 }}
+            className={`${
+              !isOnline 
+                ? 'bg-red-600' 
+                : 'bg-yellow-600'
+            } text-white px-4 py-2 text-center text-sm font-medium`}
+          >
+            <div className="flex items-center justify-center space-x-2">
+              {!isOnline ? (
+                <WifiOff className="h-4 w-4" />
+              ) : (
+                <Wifi className="h-4 w-4" />
+              )}
+              <span>
+                {!isOnline 
+                  ? 'No internet connection - Some features may not work'
+                  : 'Connection issues with server - Data may not sync properly'
+                }
+              </span>
+              <button
+                onClick={handleRetryConnection}
+                className="ml-2 bg-white/20 hover:bg-white/30 px-2 py-1 rounded text-xs transition-colors duration-200 flex items-center space-x-1"
+              >
+                <RefreshCw className="h-3 w-3" />
+                <span>Retry</span>
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-purple-100 sticky top-0 z-50">
+      <header className="bg-white/80 backdrop-blur-md border-b border-purple-100 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <Link to="/dashboard" className="flex items-center space-x-3">

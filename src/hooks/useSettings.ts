@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './useAuth';
+import { useNetworkStatus } from './useNetworkStatus';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 
@@ -33,6 +34,7 @@ const defaultSettings: UserSettings = {
 
 export function useSettings() {
   const { user, handleSupabaseError } = useAuth();
+  const { withRetry, isConnectedToSupabase } = useNetworkStatus();
   const [settings, setSettings] = useState<UserSettings>(defaultSettings);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -44,18 +46,27 @@ export function useSettings() {
       return;
     }
 
-    try {
-      const { data, error } = await supabase
-        .from('user_settings')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle();
+    if (!isConnectedToSupabase) {
+      setLoading(false);
+      return;
+    }
 
-      if (error) {
-        const isJWTError = await handleSupabaseError(error);
-        if (!isJWTError) throw error;
-        return;
-      }
+    try {
+      const data = await withRetry(async () => {
+        const { data, error } = await supabase
+          .from('user_settings')
+          .select('*')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (error) {
+          const isJWTError = await handleSupabaseError(error);
+          if (!isJWTError) throw error;
+          return null;
+        }
+
+        return data;
+      });
 
       if (data) {
         const loadedSettings: UserSettings = {
@@ -81,37 +92,44 @@ export function useSettings() {
       }
     } catch (error) {
       console.error('Error loading settings:', error);
-      toast.error('Failed to load settings');
+      if (isConnectedToSupabase) {
+        toast.error('Failed to load settings');
+      }
     } finally {
       setLoading(false);
     }
-  }, [user, handleSupabaseError, creatingDefaults, saving]);
+  }, [user, handleSupabaseError, creatingDefaults, saving, withRetry, isConnectedToSupabase]);
 
   const createDefaultSettings = async () => {
-    if (!user || creatingDefaults) return;
+    if (!user || creatingDefaults || !isConnectedToSupabase) return;
 
     try {
       setCreatingDefaults(true);
-      const { error } = await supabase
-        .from('user_settings')
-        .upsert([{ 
-          user_id: user.id, 
-          ...defaultSettings 
-        }], {
-          onConflict: 'user_id'
-        });
+      
+      await withRetry(async () => {
+        const { error } = await supabase
+          .from('user_settings')
+          .upsert([{ 
+            user_id: user.id, 
+            ...defaultSettings 
+          }], {
+            onConflict: 'user_id'
+          });
 
-      if (error) {
-        const isJWTError = await handleSupabaseError(error);
-        if (!isJWTError) throw error;
-        return;
-      }
+        if (error) {
+          const isJWTError = await handleSupabaseError(error);
+          if (!isJWTError) throw error;
+          return;
+        }
+      });
       
       setSettings(defaultSettings);
       applyTheme(defaultSettings.theme);
     } catch (error) {
       console.error('Error creating default settings:', error);
-      toast.error('Failed to create default settings');
+      if (isConnectedToSupabase) {
+        toast.error('Failed to create default settings');
+      }
     } finally {
       setCreatingDefaults(false);
     }
@@ -123,25 +141,32 @@ export function useSettings() {
       return;
     }
 
+    if (!isConnectedToSupabase) {
+      toast.error('Cannot save settings - no connection to server');
+      return;
+    }
+
     try {
       setSaving(true);
       const updatedSettings = { ...settings, ...newSettings };
       
-      const { error } = await supabase
-        .from('user_settings')
-        .upsert([{ 
-          user_id: user.id, 
-          ...updatedSettings,
-          updated_at: new Date().toISOString()
-        }], {
-          onConflict: 'user_id'
-        });
+      await withRetry(async () => {
+        const { error } = await supabase
+          .from('user_settings')
+          .upsert([{ 
+            user_id: user.id, 
+            ...updatedSettings,
+            updated_at: new Date().toISOString()
+          }], {
+            onConflict: 'user_id'
+          });
 
-      if (error) {
-        const isJWTError = await handleSupabaseError(error);
-        if (!isJWTError) throw error;
-        return;
-      }
+        if (error) {
+          const isJWTError = await handleSupabaseError(error);
+          if (!isJWTError) throw error;
+          return;
+        }
+      });
 
       setSettings(updatedSettings);
       

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './useAuth';
+import { useNetworkStatus } from './useNetworkStatus';
 import { useEncryption } from './useEncryption';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
@@ -28,79 +29,25 @@ interface MoodAnalysis {
   summary: string;
 }
 
-// Retry utility function
-const retryOperation = async <T>(
-  operation: () => Promise<T>,
-  maxRetries: number = 3,
-  delay: number = 1000
-): Promise<T> => {
-  let lastError: Error;
-  
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      return await operation();
-    } catch (error) {
-      lastError = error as Error;
-      
-      // Don't retry on authentication errors
-      if (error && typeof error === 'object' && 'code' in error) {
-        const supabaseError = error as any;
-        if (supabaseError.code === 'PGRST301' || supabaseError.message?.includes('JWT')) {
-          throw error;
-        }
-      }
-      
-      if (attempt === maxRetries) {
-        throw lastError;
-      }
-      
-      // Wait before retrying, with exponential backoff
-      await new Promise(resolve => setTimeout(resolve, delay * attempt));
-    }
-  }
-  
-  throw lastError!;
-};
-
-// Check network connectivity
-const checkNetworkConnectivity = async (): Promise<boolean> => {
-  try {
-    // Try to fetch a simple endpoint to check connectivity
-    const response = await fetch('https://httpbin.org/status/200', {
-      method: 'HEAD',
-      mode: 'no-cors',
-      cache: 'no-cache'
-    });
-    return true;
-  } catch {
-    return navigator.onLine;
-  }
-};
-
 export function useChatSessions() {
   const { user, handleSupabaseError } = useAuth();
+  const { withRetry, isConnectedToSupabase } = useNetworkStatus();
   const { storeEncryptedData } = useEncryption();
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
-  const [networkError, setNetworkError] = useState(false);
 
   const loadSessions = useCallback(async () => {
     if (!user) return;
 
-    try {
-      setNetworkError(false);
-      
-      // Check network connectivity first
-      const isOnline = await checkNetworkConnectivity();
-      if (!isOnline) {
-        setNetworkError(true);
-        toast.error('No internet connection. Please check your network and try again.');
-        return;
-      }
+    if (!isConnectedToSupabase) {
+      setLoading(false);
+      return;
+    }
 
-      const result = await retryOperation(async () => {
+    try {
+      const data = await withRetry(async () => {
         const { data, error } = await supabase
           .from('chat_sessions')
           .select('*')
@@ -116,31 +63,22 @@ export function useChatSessions() {
         return data;
       });
 
-      if (result !== null) {
-        setSessions(result || []);
-      }
+      setSessions(data || []);
     } catch (error) {
       console.error('Error loading chat sessions:', error);
-      setNetworkError(true);
-      
-      // Provide more specific error messages
-      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-        toast.error('Unable to connect to the server. Please check your internet connection and try again.');
-      } else if (error && typeof error === 'object' && 'message' in error) {
-        toast.error(`Failed to load chat sessions: ${(error as any).message}`);
-      } else {
-        toast.error('Failed to load chat sessions. Please try again.');
+      if (isConnectedToSupabase) {
+        toast.error('Failed to load chat sessions');
       }
     } finally {
       setLoading(false);
     }
-  }, [user, handleSupabaseError]);
+  }, [user, handleSupabaseError, withRetry, isConnectedToSupabase]);
 
   const loadMessages = useCallback(async (sessionId: string) => {
-    if (!user) return;
+    if (!user || !isConnectedToSupabase) return;
 
     try {
-      const result = await retryOperation(async () => {
+      const data = await withRetry(async () => {
         const { data, error } = await supabase
           .from('chat_messages')
           .select('*')
@@ -157,24 +95,25 @@ export function useChatSessions() {
         return data;
       });
 
-      if (result !== null) {
-        setMessages(result || []);
-      }
+      setMessages(data || []);
     } catch (error) {
       console.error('Error loading messages:', error);
-      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-        toast.error('Unable to load messages. Please check your connection.');
-      } else {
+      if (isConnectedToSupabase) {
         toast.error('Failed to load messages');
       }
     }
-  }, [user, handleSupabaseError]);
+  }, [user, handleSupabaseError, withRetry, isConnectedToSupabase]);
 
   const createNewSession = async (title?: string) => {
-    if (!user) return null;
+    if (!user || !isConnectedToSupabase) {
+      if (!isConnectedToSupabase) {
+        toast.error('Cannot create session - no connection to server');
+      }
+      return null;
+    }
 
     try {
-      const result = await retryOperation(async () => {
+      const data = await withRetry(async () => {
         const { data, error } = await supabase
           .from('chat_sessions')
           .insert([{
@@ -193,8 +132,8 @@ export function useChatSessions() {
         return data;
       });
 
-      if (result) {
-        const newSession = result;
+      if (data) {
+        const newSession = data;
         setSessions(prev => [newSession, ...prev]);
         setCurrentSession(newSession);
         setMessages([]);
@@ -202,23 +141,24 @@ export function useChatSessions() {
         toast.success('New chat session created!');
         return newSession;
       }
-      return null;
     } catch (error) {
       console.error('Error creating session:', error);
-      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-        toast.error('Unable to create session. Please check your connection.');
-      } else {
-        toast.error('Failed to create new session');
-      }
-      return null;
+      toast.error('Failed to create new session');
     }
+    
+    return null;
   };
 
   const addMessage = async (sessionId: string, messageType: 'user' | 'ai', content: string) => {
-    if (!user) return null;
+    if (!user || !isConnectedToSupabase) {
+      if (!isConnectedToSupabase) {
+        toast.error('Cannot send message - no connection to server');
+      }
+      return null;
+    }
 
     try {
-      const result = await retryOperation(async () => {
+      const data = await withRetry(async () => {
         const { data, error } = await supabase
           .from('chat_messages')
           .insert([{
@@ -239,39 +179,39 @@ export function useChatSessions() {
         return data;
       });
 
-      if (result) {
-        const newMessage = result;
+      if (data) {
+        const newMessage = data;
         setMessages(prev => [...prev, newMessage]);
 
         // Store encrypted data if it's sensitive
         if (messageType === 'user') {
           try {
             await storeEncryptedData('chat_message', content);
-          } catch (encryptionError) {
-            console.warn('Failed to store encrypted data:', encryptionError);
-            // Don't fail the entire operation if encryption fails
+          } catch (error) {
+            console.warn('Failed to store encrypted data:', error);
           }
         }
 
         return newMessage;
       }
-      return null;
     } catch (error) {
       console.error('Error adding message:', error);
-      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-        toast.error('Unable to save message. Please check your connection.');
-      } else {
-        toast.error('Failed to save message');
-      }
-      return null;
+      toast.error('Failed to save message');
     }
+    
+    return null;
   };
 
   const deleteSession = async (sessionId: string) => {
-    if (!user) return;
+    if (!user || !isConnectedToSupabase) {
+      if (!isConnectedToSupabase) {
+        toast.error('Cannot delete session - no connection to server');
+      }
+      return;
+    }
 
     try {
-      await retryOperation(async () => {
+      await withRetry(async () => {
         const { error } = await supabase
           .from('chat_sessions')
           .delete()
@@ -281,6 +221,7 @@ export function useChatSessions() {
         if (error) {
           const isJWTError = await handleSupabaseError(error);
           if (!isJWTError) throw error;
+          return;
         }
       });
 
@@ -294,19 +235,20 @@ export function useChatSessions() {
       toast.success('Chat session deleted');
     } catch (error) {
       console.error('Error deleting session:', error);
-      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-        toast.error('Unable to delete session. Please check your connection.');
-      } else {
-        toast.error('Failed to delete session');
-      }
+      toast.error('Failed to delete session');
     }
   };
 
   const updateSessionTitle = async (sessionId: string, title: string) => {
-    if (!user) return;
+    if (!user || !isConnectedToSupabase) {
+      if (!isConnectedToSupabase) {
+        toast.error('Cannot update title - no connection to server');
+      }
+      return;
+    }
 
     try {
-      await retryOperation(async () => {
+      await withRetry(async () => {
         const { error } = await supabase
           .from('chat_sessions')
           .update({ title })
@@ -316,6 +258,7 @@ export function useChatSessions() {
         if (error) {
           const isJWTError = await handleSupabaseError(error);
           if (!isJWTError) throw error;
+          return;
         }
       });
 
@@ -330,21 +273,22 @@ export function useChatSessions() {
       toast.success('Session title updated');
     } catch (error) {
       console.error('Error updating session title:', error);
-      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-        toast.error('Unable to update title. Please check your connection.');
-      } else {
-        toast.error('Failed to update title');
-      }
+      toast.error('Failed to update title');
     }
   };
 
   const generateMoodReport = async (sessionId: string): Promise<MoodAnalysis | null> => {
-    if (!user) return null;
+    if (!user || !isConnectedToSupabase) {
+      if (!isConnectedToSupabase) {
+        toast.error('Cannot generate report - no connection to server');
+      }
+      return null;
+    }
 
     try {
-      const result = await retryOperation(async () => {
-        // Get all messages from the session
-        const { data: messagesData, error } = await supabase
+      // Get all messages from the session
+      const messagesData = await withRetry(async () => {
+        const { data, error } = await supabase
           .from('chat_messages')
           .select('content, message_type')
           .eq('session_id', sessionId)
@@ -356,48 +300,38 @@ export function useChatSessions() {
           return null;
         }
 
-        return messagesData;
+        return data;
       });
 
-      if (!result) return null;
-
-      const userMessages = result.filter(m => m.message_type === 'user') || [];
+      const userMessages = messagesData?.filter(m => m.message_type === 'user') || [];
       const conversationText = userMessages.map(m => m.content).join(' ');
 
       // Simple mood analysis (in production, you'd use a proper AI service)
       const analysis = analyzeMoodFromText(conversationText);
 
       // Store the analysis
-      try {
-        await retryOperation(async () => {
-          const { error: analyticsError } = await supabase
-            .from('mood_analytics')
-            .insert([{
-              user_id: user.id,
-              session_id: sessionId,
-              analysis_type: 'mood_report',
-              analysis_data: analysis,
-            }]);
+      await withRetry(async () => {
+        const { error } = await supabase
+          .from('mood_analytics')
+          .insert([{
+            user_id: user.id,
+            session_id: sessionId,
+            analysis_type: 'mood_report',
+            analysis_data: analysis,
+          }]);
 
-          if (analyticsError) {
-            const isJWTError = await handleSupabaseError(analyticsError);
-            if (!isJWTError) throw analyticsError;
-          }
-        });
-      } catch (analyticsError) {
-        console.warn('Failed to store mood analytics:', analyticsError);
-        // Don't fail the entire operation if analytics storage fails
-      }
+        if (error) {
+          const isJWTError = await handleSupabaseError(error);
+          if (!isJWTError) throw error;
+          return;
+        }
+      });
 
       toast.success('Mood report generated!');
       return analysis;
     } catch (error) {
       console.error('Error generating mood report:', error);
-      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
-        toast.error('Unable to generate report. Please check your connection.');
-      } else {
-        toast.error('Failed to generate mood report');
-      }
+      toast.error('Failed to generate mood report');
       return null;
     }
   };
@@ -426,19 +360,6 @@ export function useChatSessions() {
     }
   };
 
-  // Retry loading sessions when network comes back online
-  useEffect(() => {
-    const handleOnline = () => {
-      if (networkError && user) {
-        toast.success('Connection restored! Reloading data...');
-        loadSessions();
-      }
-    };
-
-    window.addEventListener('online', handleOnline);
-    return () => window.removeEventListener('online', handleOnline);
-  }, [networkError, user, loadSessions]);
-
   useEffect(() => {
     if (user) {
       loadSessions();
@@ -450,7 +371,6 @@ export function useChatSessions() {
     currentSession,
     messages,
     loading,
-    networkError,
     setCurrentSession,
     loadMessages,
     createNewSession,
